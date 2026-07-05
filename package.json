@@ -1,0 +1,14 @@
+{
+  "name": "astra-mesh",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Astra Mesh Phase 1 — Relay server for E2E encrypted iOS/Android chat",
+  "scripts": {
+    "start": "node relay/server.js",
+    "relay": "node relay/server.js"
+  },
+  "dependencies": {
+    "tweetnacl": "^1.0.3",
+    "ws": "^8.18.0"
+  }
+}

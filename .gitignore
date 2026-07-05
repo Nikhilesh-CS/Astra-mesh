@@ -1,0 +1,49 @@
+# Built application files
+*.apk
+*.aab
+*.ap_
+*.aapt
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Gradle files
+.gradle/
+build/
+*/build/
+
+# IDE files
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+
+# NDK
+obj/
+
+# Keystore files
+*.jks
+*.keystore
+
+# Node/Relay files
+node_modules/
+relay/node_modules/
+.npm/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Agent/AI generated tracking files
+.agents/
+.uploads/
+.system_generated/
+
+android/gradle-8.5.zip
+android/gradle-8.5/
