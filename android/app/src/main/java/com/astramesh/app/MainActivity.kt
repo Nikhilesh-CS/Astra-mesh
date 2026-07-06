@@ -91,8 +91,9 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AstraMeshTheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = DeepBlack) {
-                    if (!permissionsGranted) {
+                com.astramesh.app.debug.UIMicroAuditOverlay {
+                    Surface(modifier = Modifier.fillMaxSize(), color = DeepBlack) {
+                        if (!permissionsGranted) {
                         PermissionsScreen(onRetry = { requestNearbyPermissions() })
                         return@Surface
                     }
@@ -211,6 +212,7 @@ class MainActivity : ComponentActivity() {
                                 navController = navController,
                                 torManager = service.torManager
                             )
+                        }
                         }
                     }
                 }

@@ -57,7 +57,7 @@ fun AstraAvatar(
                     .size(size * 0.28f)
                     .align(Alignment.BottomEnd)
                     .clip(CircleShape)
-                    .background(DeepBlack)
+                    .background(DeepSpace)
                     .padding(2.dp)
                     .clip(CircleShape)
                     .background(NeonGreen)
@@ -185,4 +185,157 @@ fun UnreadBadge(count: Int) {
             fontWeight = FontWeight.Bold
         )
     }
+}
+
+
+@Composable
+fun AstraPrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    androidx.compose.material3.Button(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        shape = RoundedCornerShape(AstraTheme.radii.button),
+        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+            contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary,
+            disabledContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(alpha = AstraTheme.opacities.disabled),
+            disabledContentColor = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary.copy(alpha = AstraTheme.opacities.disabled)
+        ),
+        contentPadding = PaddingValues(horizontal = AstraTheme.spacing.standard, vertical = AstraTheme.spacing.medium)
+    ) {
+        Text(text = text, style = androidx.compose.material3.MaterialTheme.typography.labelLarge)
+    }
+}
+
+@Composable
+fun AstraSecondaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    androidx.compose.material3.OutlinedButton(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        shape = RoundedCornerShape(AstraTheme.radii.button),
+        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+            contentColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+            disabledContentColor = androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(alpha = AstraTheme.opacities.disabled)
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp, 
+            if (enabled) androidx.compose.material3.MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(alpha = AstraTheme.opacities.disabled)
+        ),
+        contentPadding = PaddingValues(horizontal = AstraTheme.spacing.standard, vertical = AstraTheme.spacing.medium)
+    ) {
+        Text(text = text, style = androidx.compose.material3.MaterialTheme.typography.labelLarge)
+    }
+}
+
+@Composable
+fun AstraCard(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    if (onClick != null) {
+        androidx.compose.material3.Card(
+            onClick = onClick,
+            modifier = modifier,
+            shape = RoundedCornerShape(AstraTheme.radii.card),
+            colors = androidx.compose.material3.CardDefaults.cardColors(
+                containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant,
+            ),
+            elevation = androidx.compose.material3.CardDefaults.cardElevation(
+                defaultElevation = AstraTheme.elevations.cardResting
+            ),
+            content = content
+        )
+    } else {
+        androidx.compose.material3.Card(
+            modifier = modifier,
+            shape = RoundedCornerShape(AstraTheme.radii.card),
+            colors = androidx.compose.material3.CardDefaults.cardColors(
+                containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant,
+            ),
+            elevation = androidx.compose.material3.CardDefaults.cardElevation(
+                defaultElevation = AstraTheme.elevations.cardResting
+            ),
+            content = content
+        )
+    }
+}
+
+@Composable
+fun AstraTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    placeholder: String? = null,
+    leadingIcon: @Composable (() -> Unit)? = null,
+    trailingIcon: @Composable (() -> Unit)? = null,
+    singleLine: Boolean = true,
+    enabled: Boolean = true,
+    isError: Boolean = false
+) {
+    androidx.compose.material3.OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier.fillMaxWidth(),
+        label = label?.let { { Text(it) } },
+        placeholder = placeholder?.let { { Text(it) } },
+        leadingIcon = leadingIcon,
+        trailingIcon = trailingIcon,
+        singleLine = singleLine,
+        enabled = enabled,
+        isError = isError,
+        shape = RoundedCornerShape(AstraTheme.radii.card),
+        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+            unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outline,
+            focusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+        )
+    )
+}
+
+@Composable
+fun AstraDialog(
+    onDismissRequest: () -> Unit,
+    title: String,
+    text: String,
+    confirmButtonText: String,
+    onConfirm: () -> Unit,
+    dismissButtonText: String? = null,
+    onDismiss: (() -> Unit)? = null,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text(title) },
+        text = { Text(text) },
+        confirmButton = {
+            AstraPrimaryButton(
+                text = confirmButtonText,
+                onClick = onConfirm
+            )
+        },
+        dismissButton = dismissButtonText?.let {
+            {
+                AstraSecondaryButton(
+                    text = it,
+                    onClick = onDismiss ?: onDismissRequest
+                )
+            }
+        },
+        shape = RoundedCornerShape(AstraTheme.radii.dialog),
+        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+        titleContentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+        textContentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+        tonalElevation = AstraTheme.elevations.dialog
+    )
 }

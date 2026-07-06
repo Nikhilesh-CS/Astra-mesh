@@ -1,5 +1,7 @@
 package com.astramesh.app.ui.screens
 
+import com.astramesh.app.ui.theme.AstraTheme
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,10 +24,10 @@ fun AddContactDialog(
             Column {
                 Text(
                     "Paste a contact key (astra:…). Include Tor .onion for distant messaging.",
-                    fontSize = 13.sp,
+                    fontSize = AstraTheme.typography.bodySmall.fontSize,
                     color = MutedGray
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(AstraTheme.spacing.medium))
                 OutlinedTextField(
                     value = contactString,
                     onValueChange = { contactString = it },

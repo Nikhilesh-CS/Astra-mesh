@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import com.astramesh.app.ui.theme.AstraTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -62,8 +63,8 @@ fun SecurityCenterScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(AstraTheme.spacing.large),
+            verticalArrangement = Arrangement.spacedBy(AstraTheme.spacing.standard)
         ) {
             SecurityCard(
                 title = "End-To-End Encryption",
@@ -87,7 +88,7 @@ fun SecurityCenterScreen(
             SecurityCard(
                 title = "Tor Network Status",
                 value = if (torReady) "Connected" else "Connecting / Offline ($torStatus)",
-                statusColor = if (torReady) NeonGreen else Color(0xFFFFB74D),
+                statusColor = if (torReady) NeonGreen else AstraTheme.colors.secondary,
                 icon = "🧅"
             )
 
@@ -125,7 +126,7 @@ fun SecurityCard(
 ) {
     var modifier = Modifier
         .fillMaxWidth()
-        .clip(RoundedCornerShape(16.dp))
+        .clip(RoundedCornerShape(AstraTheme.spacing.standard))
         .background(CardSurface)
     
     if (onCopy != null) {
@@ -133,22 +134,22 @@ fun SecurityCard(
     }
 
     Row(
-        modifier = modifier.padding(16.dp),
+        modifier = modifier.padding(AstraTheme.spacing.standard),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(icon, fontSize = 28.sp)
-        Spacer(modifier = Modifier.width(16.dp))
+        Text(icon, fontSize = AstraTheme.typography.headlineLarge.fontSize)
+        Spacer(modifier = Modifier.width(AstraTheme.spacing.standard))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                fontSize = 13.sp,
+                fontSize = AstraTheme.typography.bodySmall.fontSize,
                 color = MutedGray,
                 fontWeight = FontWeight.SemiBold
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(AstraTheme.spacing.tiny))
             Text(
                 text = value,
-                fontSize = 15.sp,
+                fontSize = AstraTheme.typography.bodyLarge.fontSize,
                 color = statusColor,
                 fontWeight = FontWeight.Medium
             )

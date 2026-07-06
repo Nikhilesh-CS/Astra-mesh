@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import com.astramesh.app.ui.theme.AstraTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -42,8 +43,8 @@ fun DiagnosticsDialog(
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 // Tor Section
-                Text("Tor Network", color = AccentViolet, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                Spacer(modifier = Modifier.height(8.dp))
+                Text("Tor Network", color = AccentViolet, fontWeight = FontWeight.SemiBold, fontSize = AstraTheme.typography.bodyMedium.fontSize)
+                Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
                 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
@@ -59,41 +60,41 @@ fun DiagnosticsDialog(
                                 }
                             )
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Status: $torStatus", color = MutedGray, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.width(AstraTheme.spacing.small))
+                    Text("Status: $torStatus", color = MutedGray, fontSize = AstraTheme.typography.bodySmall.fontSize)
                 }
                 
-                Spacer(modifier = Modifier.height(4.dp))
-                Text("Address: ${if (onionAddress.isNotBlank()) onionAddress else "Not available"}", color = MutedGray, fontSize = 13.sp)
+                Spacer(modifier = Modifier.height(AstraTheme.spacing.tiny))
+                Text("Address: ${if (onionAddress.isNotBlank()) onionAddress else "Not available"}", color = MutedGray, fontSize = AstraTheme.typography.bodySmall.fontSize)
                 
                 if (torState is TorState.Starting) {
                     val progress = (torState as TorState.Starting).progress
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Bootstrap: $progress%", color = AccentCyan, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
+                    Text("Bootstrap: $progress%", color = AccentCyan, fontSize = AstraTheme.typography.labelMedium.fontSize)
                     LinearProgressIndicator(
                         progress = progress / 100f,
-                        modifier = Modifier.fillMaxWidth().height(4.dp),
+                        modifier = Modifier.fillMaxWidth().height(AstraTheme.spacing.tiny),
                         color = AccentCyan,
                         trackColor = DarkSurface
                     )
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(AstraTheme.spacing.extraLarge))
 
                 // Mesh Section
-                Text("Mesh Network", color = AccentBlue, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Connected Peers: ${connectedEndpoints.size}", color = MutedGray, fontSize = 13.sp)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text("Discovery: $connectionStatus", color = MutedGray, fontSize = 13.sp)
+                Text("Mesh Network", color = AccentBlue, fontWeight = FontWeight.SemiBold, fontSize = AstraTheme.typography.bodyMedium.fontSize)
+                Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
+                Text("Connected Peers: ${connectedEndpoints.size}", color = MutedGray, fontSize = AstraTheme.typography.bodySmall.fontSize)
+                Spacer(modifier = Modifier.height(AstraTheme.spacing.tiny))
+                Text("Discovery: $connectionStatus", color = MutedGray, fontSize = AstraTheme.typography.bodySmall.fontSize)
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(AstraTheme.spacing.extraLarge))
 
                 // Device Info
-                Text("Device Info", color = DimGray, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("App Version: 2.0-mesh", color = MutedGray, fontSize = 13.sp)
-                Text("Protocol: V2", color = MutedGray, fontSize = 13.sp)
+                Text("Device Info", color = DimGray, fontWeight = FontWeight.SemiBold, fontSize = AstraTheme.typography.bodyMedium.fontSize)
+                Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
+                Text("App Version: 2.0-mesh", color = MutedGray, fontSize = AstraTheme.typography.bodySmall.fontSize)
+                Text("Protocol: V2", color = MutedGray, fontSize = AstraTheme.typography.bodySmall.fontSize)
             }
         },
         confirmButton = {
@@ -101,6 +102,6 @@ fun DiagnosticsDialog(
                 Text("Close", color = AccentViolet)
             }
         },
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(AstraTheme.spacing.standard)
     )
 }

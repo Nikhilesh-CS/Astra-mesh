@@ -1,5 +1,7 @@
 package com.astramesh.app.ui.screens
 
+import com.astramesh.app.ui.theme.AstraTheme
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,10 +20,19 @@ import androidx.navigation.NavController
 import com.astramesh.app.network.MeshProtocol
 import com.astramesh.app.network.TorManager
 import com.astramesh.app.network.TorState
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import com.astramesh.app.debug.BatteryProfiler
+import com.astramesh.app.debug.CrashRecoveryEngine
+import com.astramesh.app.debug.NetworkChaosMonkey
+import com.astramesh.app.debug.StressTestEngine
+import com.astramesh.app.debug.UIMicroAuditController
 import com.astramesh.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import android.os.Build
+import com.astramesh.app.debug.*
+import androidx.compose.ui.platform.LocalContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,6 +50,11 @@ fun DebugScreen(
     var testResult by remember { mutableStateOf<String?>(null) }
     var torVersionResult by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    // QA Tester States
+    var isOverlayEnabled by remember { mutableStateOf(false) }
+    var isChaosMonkeyEnabled by remember { mutableStateOf(false) }
 
     // Watch for pong response
     LaunchedEffect(lastPing) {
@@ -65,12 +81,12 @@ fun DebugScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(AstraTheme.spacing.standard),
+            verticalArrangement = Arrangement.spacedBy(AstraTheme.spacing.standard)
         ) {
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = DarkSurface)) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(AstraTheme.spacing.standard)) {
                         Text("Tor Status: ${if (torState is TorState.Connected) "Connected" else if (torState is TorState.Failed) "Failed" else "Starting"}", color = AccentCyan)
                         val progress = if (torState is TorState.Starting) (torState as TorState.Starting).progress else if (torState is TorState.Connected) 100 else 0
                         Text("Bootstrap: $progress%", color = SoftWhite)
@@ -85,14 +101,14 @@ fun DebugScreen(
 
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = DarkSurface)) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Binary Path: ${torManager.torBinaryPath}", color = SoftWhite, fontSize = 12.sp)
-                        Text("File Exists: ${torManager.torBinaryExists}", color = SoftWhite, fontSize = 12.sp)
-                        Text("Can Execute: ${torManager.torBinaryExecutable}", color = SoftWhite, fontSize = 12.sp)
-                        Text("Binary Type: ${torManager.torBinaryType}", color = SoftWhite, fontSize = 12.sp)
-                        Text("Detected ABI: ${Build.SUPPORTED_ABIS.firstOrNull() ?: "Unknown"}", color = SoftWhite, fontSize = 12.sp)
+                    Column(modifier = Modifier.padding(AstraTheme.spacing.standard)) {
+                        Text("Binary Path: ${torManager.torBinaryPath}", color = SoftWhite, fontSize = AstraTheme.typography.labelMedium.fontSize)
+                        Text("File Exists: ${torManager.torBinaryExists}", color = SoftWhite, fontSize = AstraTheme.typography.labelMedium.fontSize)
+                        Text("Can Execute: ${torManager.torBinaryExecutable}", color = SoftWhite, fontSize = AstraTheme.typography.labelMedium.fontSize)
+                        Text("Binary Type: ${torManager.torBinaryType}", color = SoftWhite, fontSize = AstraTheme.typography.labelMedium.fontSize)
+                        Text("Detected ABI: ${Build.SUPPORTED_ABIS.firstOrNull() ?: "Unknown"}", color = SoftWhite, fontSize = AstraTheme.typography.labelMedium.fontSize)
                         
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
                         
                         Button(
                             onClick = {
@@ -106,7 +122,61 @@ fun DebugScreen(
                             Text("Test Tor Binary")
                         }
                         if (torVersionResult != null) {
-                            Text("Tor Test: $torVersionResult", color = AccentCyan, fontSize = 12.sp)
+                            Text("Tor Test: $torVersionResult", color = AccentCyan, fontSize = AstraTheme.typography.labelMedium.fontSize)
+                        }
+                    }
+                }
+            }
+
+            item {
+                Text("QA Certification Tools (Section 02)", color = AccentViolet, fontWeight = FontWeight.Bold)
+            }
+
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = DarkSurface)) {
+                    Column(modifier = Modifier.padding(AstraTheme.spacing.standard), verticalArrangement = Arrangement.spacedBy(AstraTheme.spacing.small)) {
+                        Text("Phase 1 & 3: Performance & Flow", color = AccentCyan)
+                        Button(
+                            onClick = { 
+                                scope.launch(Dispatchers.IO) {
+                                    // Requires AppDatabase instance, placeholder
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Inject 20,000 Messages (Stress Test)")
+                        }
+
+                        Text("Phase 2: UI Micro Audit", color = AccentCyan)
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Text("8dp Grid & Touch Overlay", color = SoftWhite, modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = isOverlayEnabled,
+                                onCheckedChange = { isOverlayEnabled = it }
+                            )
+                        }
+
+                        Text("Phase 4: Mesh Reliability", color = AccentCyan)
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Text("Network Chaos Monkey", color = SoftWhite, modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = isChaosMonkeyEnabled,
+                                onCheckedChange = { 
+                                    isChaosMonkeyEnabled = it
+                                    // NetworkChaosMonkey.isActive = it
+                                }
+                            )
+                        }
+
+                        Text("Phase X: Crash Recovery & Battery", color = AccentCyan)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            Button(onClick = { /* CrashRecoveryEngine.triggerProcessDeath(500) */ }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))) {
+                                Text("Kill Process")
+                            }
+                            Button(onClick = { /* CrashRecoveryEngine.triggerOOM() */ }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))) {
+                                Text("Trigger OOM")
+                            }
                         }
                     }
                 }
@@ -124,7 +194,7 @@ fun DebugScreen(
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
                 Button(
                     onClick = {
                         testResult = "Connecting..."
@@ -153,7 +223,7 @@ fun DebugScreen(
             }
 
             items(torLogs.reversed()) { log ->
-                Text(log, color = MutedGray, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                Text(log, color = MutedGray, fontSize = AstraTheme.typography.labelSmall.fontSize, fontFamily = FontFamily.Monospace)
             }
         }
     }

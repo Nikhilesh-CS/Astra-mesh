@@ -1,5 +1,7 @@
 package com.astramesh.app.ui.screens
 
+import com.astramesh.app.ui.theme.AstraTheme
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -110,9 +112,9 @@ fun AstraBottomNavigation(
 ) {
     NavigationBar(
         modifier = Modifier
-            .padding(16.dp)
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
-            .glassmorphism(cornerRadius = 24.dp, backgroundColor = SurfaceDark.copy(alpha = 0.8f)),
+            .padding(AstraTheme.spacing.standard)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(AstraTheme.spacing.extraLarge))
+            .glassmorphism(cornerRadius = AstraTheme.spacing.extraLarge, backgroundColor = SurfaceDark.copy(alpha = 0.8f)),
         containerColor = Color.Transparent,
         tonalElevation = 0.dp
     ) {
@@ -132,7 +134,7 @@ fun AstraBottomNavigation(
                 icon = { 
                     Text(
                         text = item.icon, 
-                        fontSize = if (selected) 24.sp else 20.sp,
+                        fontSize = if (selected) AstraTheme.typography.headlineMedium.fontSize else AstraTheme.typography.titleLarge.fontSize,
                         color = if (selected) MaterialTheme.colorScheme.primary else TextMuted
                     ) 
                 },

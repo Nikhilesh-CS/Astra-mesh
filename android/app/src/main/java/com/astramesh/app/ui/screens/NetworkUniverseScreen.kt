@@ -1,5 +1,7 @@
 package com.astramesh.app.ui.screens
 
+import com.astramesh.app.ui.theme.AstraTheme
+
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -71,29 +73,32 @@ fun NetworkUniverseScreen(
                 Text(
                     "Waiting for network data...",
                     style = MaterialTheme.typography.bodyLarge,
-                    color = Color.White.copy(alpha = 0.5f)
+                    color = AstraTheme.colors.onSurface.copy(alpha = 0.5f)
                 )
             }
         } else {
+            val canvasOnSurface = AstraTheme.colors.onSurface
+            val canvasLargeSize = AstraTheme.spacing.large
+            val canvasSmallSize = AstraTheme.spacing.small
             Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2, size.height / 2)
             val baseRadius = size.width / 4
 
             // Draw Orbits
             drawCircle(
-                color = Color.White.copy(alpha = 0.1f),
+                color = canvasOnSurface.copy(alpha = 0.1f),
                 radius = baseRadius * 0.8f,
                 center = center,
                 style = Stroke(width = 2f)
             )
             drawCircle(
-                color = Color.White.copy(alpha = 0.1f),
+                color = canvasOnSurface.copy(alpha = 0.1f),
                 radius = baseRadius * 1.5f,
                 center = center,
                 style = Stroke(width = 2f)
             )
             drawCircle(
-                color = Color.White.copy(alpha = 0.1f),
+                color = canvasOnSurface.copy(alpha = 0.1f),
                 radius = baseRadius * 2.5f,
                 center = center,
                 style = Stroke(width = 2f)
@@ -102,7 +107,7 @@ fun NetworkUniverseScreen(
             // Center Device
             drawCircle(
                 color = Color(0xFF9FA8DA),
-                radius = 20.dp.toPx() * breathing,
+                radius = canvasLargeSize.toPx() * breathing,
                 center = center
             )
 
@@ -115,7 +120,7 @@ fun NetworkUniverseScreen(
                     val y = center.y + (r * sin(angle)).toFloat()
                     drawCircle(
                         color = Color(0xFF64B5F6),
-                        radius = 8.dp.toPx(),
+                        radius = canvasSmallSize.toPx(),
                         center = Offset(x, y)
                     )
                 }

@@ -1,5 +1,7 @@
 package com.astramesh.app.ui.screens
 
+import com.astramesh.app.ui.theme.AstraTheme
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -218,23 +220,23 @@ fun SettingsScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 24.dp, bottom = 16.dp),
+                        .padding(top = AstraTheme.spacing.extraLarge, bottom = AstraTheme.spacing.standard),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     AstraAvatar(name = identity?.name ?: "Unknown", size = 120.dp)
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
                     
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color(0xFF003B2F)) // Darker green for background
+                            .clip(RoundedCornerShape(AstraTheme.spacing.large))
+                            .background(AstraTheme.colors.primaryContainer) // Darker green for background
                             .clickable { showEditProfileDialog = true }
-                            .padding(horizontal = 24.dp, vertical = 8.dp)
+                            .padding(horizontal = AstraTheme.spacing.extraLarge, vertical = AstraTheme.spacing.small)
                     ) {
                         Text(
                             text = "Edit",
                             color = AccentCyan, // Uses the green accent
-                            fontSize = 14.sp,
+                            fontSize = AstraTheme.typography.bodyMedium.fontSize,
                             fontWeight = FontWeight.Medium
                         )
                     }
@@ -273,7 +275,7 @@ fun SettingsScreen(
                 )
             }
 
-            item { Divider(color = CardSurface, modifier = Modifier.padding(vertical = 8.dp)) }
+            item { Divider(color = CardSurface, modifier = Modifier.padding(vertical = AstraTheme.spacing.small)) }
 
             // Group: Network & Privacy
             item {
@@ -365,7 +367,7 @@ fun SettingsScreen(
                 )
             }
 
-            item { Divider(color = CardSurface, modifier = Modifier.padding(vertical = 8.dp)) }
+            item { Divider(color = CardSurface, modifier = Modifier.padding(vertical = AstraTheme.spacing.small)) }
 
             // Group: Identity Management
             item {
@@ -385,7 +387,7 @@ fun SettingsScreen(
                 )
             }
 
-            item { Divider(color = CardSurface, modifier = Modifier.padding(vertical = 8.dp)) }
+            item { Divider(color = CardSurface, modifier = Modifier.padding(vertical = AstraTheme.spacing.small)) }
 
             // Group: Data
             item {
@@ -425,12 +427,12 @@ fun SettingsScreen(
                     icon = Icons.Rounded.DeleteOutline,
                     title = "Clear All Chats",
                     subtitle = "Irreversible action",
-                    subtitleColor = Color(0xFFE53935), // Red
+                    subtitleColor = AstraTheme.colors.error, // Red
                     onClick = { showClearChatsDialog = true }
                 )
             }
 
-            item { Divider(color = CardSurface, modifier = Modifier.padding(vertical = 8.dp)) }
+            item { Divider(color = CardSurface, modifier = Modifier.padding(vertical = AstraTheme.spacing.small)) }
 
             // Group: App Details
             item {
@@ -462,7 +464,7 @@ fun SettingsScreen(
                 )
             }
 
-            item { Spacer(modifier = Modifier.height(40.dp)) }
+            item { Spacer(modifier = Modifier.height(AstraTheme.spacing.massive2)) }
         }
     }
 
@@ -526,7 +528,7 @@ fun SettingsScreen(
                         }
                     }
                 }) {
-                    Text("Clear", color = Color(0xFFE53935))
+                    Text("Clear", color = AstraTheme.colors.error)
                 }
             },
             dismissButton = {
@@ -546,8 +548,8 @@ fun SettingsScreen(
                 Text(
                     text = onionAddress,
                     color = SoftWhite,
-                    fontSize = 16.sp,
-                    modifier = Modifier.padding(vertical = 8.dp)
+                    fontSize = AstraTheme.typography.bodyLarge.fontSize,
+                    modifier = Modifier.padding(vertical = AstraTheme.spacing.small)
                 ) 
             },
             confirmButton = {
@@ -590,7 +592,7 @@ fun SettingsScreen(
             text = {
                 Column {
                     Text("Secure your backup with a strong password. You will need it to restore this identity.", color = MutedGray)
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
                     OutlinedTextField(
                         value = backupPassword,
                         onValueChange = { backupPassword = it },
@@ -606,11 +608,11 @@ fun SettingsScreen(
                         )
                     )
                     if (backupError != null) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(backupError!!, color = Color.Red, fontSize = 12.sp)
+                        Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
+                        Text(backupError!!, color = AstraTheme.colors.error, fontSize = AstraTheme.typography.labelMedium.fontSize)
                     }
                     if (isBackupWorking) {
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
                         CircularProgressIndicator(color = AccentCyan, modifier = Modifier.align(Alignment.CenterHorizontally))
                     }
                 }
@@ -639,7 +641,7 @@ fun SettingsScreen(
             text = {
                 Column {
                     Text("Enter the password used to encrypt the backup.", color = MutedGray)
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
                     OutlinedTextField(
                         value = backupPassword,
                         onValueChange = { backupPassword = it },
@@ -655,11 +657,11 @@ fun SettingsScreen(
                         )
                     )
                     if (backupError != null) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(backupError!!, color = Color.Red, fontSize = 12.sp)
+                        Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
+                        Text(backupError!!, color = AstraTheme.colors.error, fontSize = AstraTheme.typography.labelMedium.fontSize)
                     }
                     if (isBackupWorking) {
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
                         CircularProgressIndicator(color = AccentCyan, modifier = Modifier.align(Alignment.CenterHorizontally))
                     }
                 }
@@ -693,16 +695,16 @@ fun SettingsItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 24.dp, vertical = 14.dp),
+            .padding(horizontal = AstraTheme.spacing.extraLarge, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(icon, contentDescription = title, tint = MutedGray, modifier = Modifier.size(26.dp))
-        Spacer(modifier = Modifier.width(20.dp))
+        Spacer(modifier = Modifier.width(AstraTheme.spacing.large))
         Column {
-            Text(title, color = SoftWhite, fontSize = 16.sp, fontWeight = FontWeight.Normal)
+            Text(title, color = SoftWhite, fontSize = AstraTheme.typography.bodyLarge.fontSize, fontWeight = FontWeight.Normal)
             if (subtitle != null) {
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(subtitle, color = subtitleColor, fontSize = 14.sp)
+                Text(subtitle, color = subtitleColor, fontSize = AstraTheme.typography.bodyMedium.fontSize)
             }
         }
     }
@@ -720,16 +722,16 @@ fun SettingsSwitchItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 24.dp, vertical = 14.dp),
+            .padding(horizontal = AstraTheme.spacing.extraLarge, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(icon, contentDescription = title, tint = MutedGray, modifier = Modifier.size(26.dp))
-        Spacer(modifier = Modifier.width(20.dp))
+        Spacer(modifier = Modifier.width(AstraTheme.spacing.large))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, color = SoftWhite, fontSize = 16.sp, fontWeight = FontWeight.Normal)
+            Text(title, color = SoftWhite, fontSize = AstraTheme.typography.bodyLarge.fontSize, fontWeight = FontWeight.Normal)
             if (subtitle != null) {
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(subtitle, color = MutedGray, fontSize = 14.sp)
+                Text(subtitle, color = MutedGray, fontSize = AstraTheme.typography.bodyMedium.fontSize)
             }
         }
         Switch(

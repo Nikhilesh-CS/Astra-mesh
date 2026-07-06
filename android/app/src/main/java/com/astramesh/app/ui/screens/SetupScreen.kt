@@ -1,5 +1,7 @@
 package com.astramesh.app.ui.screens
 
+import com.astramesh.app.ui.theme.AstraTheme
+
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -62,7 +64,7 @@ fun SetupScreen(
                 Brush.linearGradient(
                     colors = listOf(
                         MaterialTheme.colorScheme.background,
-                        Color(0xFF141420), // Slight tint
+                        AstraTheme.colors.surface, // Slight tint
                         MaterialTheme.colorScheme.background
                     ),
                     start = Offset(offset, 0f),
@@ -94,17 +96,17 @@ fun SetupScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 32.dp, vertical = 48.dp),
+                    .padding(horizontal = AstraTheme.spacing.massive1, vertical = AstraTheme.spacing.massive3),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Page Indicators
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(AstraTheme.spacing.small)) {
                     repeat(4) { index ->
                         val isSelected = pagerState.currentPage == index
                         Box(
                             modifier = Modifier
-                                .size(if (isSelected) 10.dp else 8.dp)
+                                .size(if (isSelected) 10.dp else AstraTheme.spacing.small)
                                 .clip(CircleShape)
                                 .background(
                                     if (isSelected) MaterialTheme.colorScheme.primary 
@@ -130,7 +132,7 @@ fun SetupScreen(
                         )
                     }
                 } else {
-                    Spacer(modifier = Modifier.width(64.dp))
+                    Spacer(modifier = Modifier.width(AstraTheme.spacing.massive5))
                 }
             }
         }
@@ -142,7 +144,7 @@ fun OnboardingPage1() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(32.dp),
+            .padding(AstraTheme.spacing.massive1),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -150,13 +152,13 @@ fun OnboardingPage1() {
         Box(
             modifier = Modifier
                 .size(120.dp)
-                .glassmorphism(cornerRadius = 32.dp, backgroundColor = Color(0x0AFFFFFF)),
+                .glassmorphism(cornerRadius = AstraTheme.spacing.massive1, backgroundColor = Color(0x0AFFFFFF)),
             contentAlignment = Alignment.Center
         ) {
-            Text("A", style = MaterialTheme.typography.headlineLarge, fontSize = 48.sp, color = MaterialTheme.colorScheme.onSurface)
+            Text("A", style = MaterialTheme.typography.headlineLarge, fontSize = AstraTheme.typography.headlineLarge.fontSize, color = MaterialTheme.colorScheme.onSurface)
         }
         
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height(AstraTheme.spacing.massive3))
         
         Text(
             text = "Communicate Without Central Servers",
@@ -164,7 +166,7 @@ fun OnboardingPage1() {
             textAlign = TextAlign.Center
         )
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
         
         Text(
             text = "Your conversations belong to you. No middlemen, no tracking, just pure peer-to-peer connection.",
@@ -180,7 +182,7 @@ fun OnboardingPage2() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(32.dp),
+            .padding(AstraTheme.spacing.massive1),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -190,10 +192,10 @@ fun OnboardingPage2() {
                 .glassmorphism(cornerRadius = 60.dp, backgroundColor = BluetoothGlow),
             contentAlignment = Alignment.Center
         ) {
-            Text("📶", fontSize = 48.sp)
+            Text("📶", fontSize = AstraTheme.typography.headlineLarge.fontSize)
         }
         
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height(AstraTheme.spacing.massive3))
         
         Text(
             text = "Connect Nearby",
@@ -201,7 +203,7 @@ fun OnboardingPage2() {
             textAlign = TextAlign.Center
         )
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
         
         Text(
             text = "Bluetooth and Wi-Fi Direct allow local communication without internet infrastructure.",
@@ -217,7 +219,7 @@ fun OnboardingPage3() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(32.dp),
+            .padding(AstraTheme.spacing.massive1),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -227,10 +229,10 @@ fun OnboardingPage3() {
                 .glassmorphism(cornerRadius = 60.dp, backgroundColor = TorGlow),
             contentAlignment = Alignment.Center
         ) {
-            Text("🧅", fontSize = 48.sp)
+            Text("🧅", fontSize = AstraTheme.typography.headlineLarge.fontSize)
         }
         
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height(AstraTheme.spacing.massive3))
         
         Text(
             text = "Reach The World Securely",
@@ -238,7 +240,7 @@ fun OnboardingPage3() {
             textAlign = TextAlign.Center
         )
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
         
         Text(
             text = "Private Onion Routes enable long-distance decentralized communication.",
@@ -257,7 +259,7 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(32.dp),
+            .padding(AstraTheme.spacing.massive1),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -268,7 +270,7 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
             color = MaterialTheme.colorScheme.onSurface
         )
         
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
         
         Text(
             text = "Welcome to AstraMesh.",
@@ -277,7 +279,7 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height(AstraTheme.spacing.massive3))
 
         // Name field
         OutlinedTextField(
@@ -285,7 +287,7 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
             onValueChange = { name = it },
             label = { Text("Display Name", style = MaterialTheme.typography.bodyMedium) },
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(AstraTheme.spacing.standard),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MaterialTheme.colorScheme.primary,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outline,
@@ -296,7 +298,7 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
             textStyle = MaterialTheme.typography.bodyLarge
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
 
         // Passphrase field
         OutlinedTextField(
@@ -305,7 +307,7 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
             label = { Text("Passphrase", style = MaterialTheme.typography.bodyMedium) },
             visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(AstraTheme.spacing.standard),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MaterialTheme.colorScheme.primary,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outline,
@@ -316,7 +318,7 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
             textStyle = MaterialTheme.typography.bodyLarge
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(AstraTheme.spacing.massive1))
 
         Button(
             onClick = {
@@ -328,9 +330,9 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
+                .height(AstraTheme.spacing.massive4),
             enabled = name.isNotBlank() && passphrase.isNotBlank(),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(AstraTheme.spacing.standard),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
@@ -342,7 +344,7 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
 
         val context = LocalContext.current
         val coroutineScope = rememberCoroutineScope()
@@ -384,7 +386,7 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
         }
 
         TextButton(onClick = { showRestoreDialog = true }) {
-            Text("Restore Existing Identity", color = MaterialTheme.colorScheme.primary, fontSize = 16.sp)
+            Text("Restore Existing Identity", color = MaterialTheme.colorScheme.primary, fontSize = AstraTheme.typography.bodyLarge.fontSize)
         }
 
         if (showRestoreDialog) {
@@ -394,7 +396,7 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
                 text = {
                     Column {
                         Text("Enter the password used to encrypt the backup:")
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
                         OutlinedTextField(
                             value = restorePassword,
                             onValueChange = { restorePassword = it },
@@ -404,11 +406,11 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
                             enabled = !isRestoring
                         )
                         if (restoreError != null) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(restoreError!!, color = Color.Red, fontSize = 12.sp)
+                            Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
+                            Text(restoreError!!, color = AstraTheme.colors.error, fontSize = AstraTheme.typography.labelMedium.fontSize)
                         }
                         if (isRestoring) {
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
                             CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
                         }
                     }

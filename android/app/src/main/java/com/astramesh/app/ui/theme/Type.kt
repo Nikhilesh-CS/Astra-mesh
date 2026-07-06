@@ -30,37 +30,37 @@ val JetBrainsMonoFontFamily = try {
 val AstraTypography = Typography(
     headlineLarge = TextStyle(
         fontFamily = InterFontFamily,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Bold, // Screen Title
         fontSize = 32.sp,
         letterSpacing = (-0.5).sp
     ),
     headlineMedium = TextStyle(
         fontFamily = InterFontFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 24.sp,
+        fontWeight = FontWeight.Bold, // Section Title
+        fontSize = 22.sp,
         letterSpacing = (-0.3).sp
     ),
     titleLarge = TextStyle(
         fontFamily = InterFontFamily,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Bold, // Dialog Title
         fontSize = 20.sp,
         letterSpacing = 0.sp
     ),
     titleMedium = TextStyle(
         fontFamily = InterFontFamily,
-        fontWeight = FontWeight.Medium,
-        fontSize = 16.sp,
+        fontWeight = FontWeight.SemiBold, // Chat Name
+        fontSize = 20.sp,
         letterSpacing = 0.15.sp
     ),
     bodyLarge = TextStyle(
         fontFamily = InterFontFamily,
-        fontWeight = FontWeight.Normal,
+        fontWeight = FontWeight.Normal, // Normal Text
         fontSize = 16.sp,
         letterSpacing = 0.5.sp
     ),
     bodyMedium = TextStyle(
         fontFamily = InterFontFamily,
-        fontWeight = FontWeight.Normal,
+        fontWeight = FontWeight.Normal, // Secondary Text
         fontSize = 14.sp,
         letterSpacing = 0.25.sp
     ),
@@ -78,13 +78,13 @@ val AstraTypography = Typography(
     ),
     labelMedium = TextStyle(
         fontFamily = InterFontFamily,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.Medium, // Timestamp
         fontSize = 12.sp,
         letterSpacing = 0.5.sp
     ),
     labelSmall = TextStyle(
         fontFamily = JetBrainsMonoFontFamily,
-        fontWeight = FontWeight.Normal,
+        fontWeight = FontWeight.Normal, // Caption
         fontSize = 11.sp,
         letterSpacing = 0.5.sp
     )

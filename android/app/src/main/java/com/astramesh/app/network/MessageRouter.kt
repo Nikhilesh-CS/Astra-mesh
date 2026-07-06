@@ -47,7 +47,10 @@ class MessageRouter(
         when (json.optString("type")) {
             MeshProtocol.TYPE_HELLO -> handleHello(endpointId, json.optString("contact"))
             MeshProtocol.TYPE_MSG -> scope.launch(Dispatchers.IO) { handleEncrypted(json, endpointId, MeshProtocol.TYPE_MSG) }
-            MeshProtocol.TYPE_MEDIA_CHUNK -> scope.launch(Dispatchers.IO) { handleEncrypted(json, endpointId, MeshProtocol.TYPE_MEDIA_CHUNK) }
+            MeshProtocol.TYPE_MEDIA_OFFER,
+            MeshProtocol.TYPE_MEDIA_CHUNK,
+            MeshProtocol.TYPE_MEDIA_ACK,
+            MeshProtocol.TYPE_MEDIA_COMPLETE -> scope.launch(Dispatchers.IO) { handleEncrypted(json, endpointId, json.optString("type")) }
             MeshProtocol.TYPE_RELAY -> scope.launch(Dispatchers.IO) { handleRelay(endpointId, json) }
             MeshProtocol.TYPE_ACK -> scope.launch(Dispatchers.IO) { handleAck(json) }
             MeshProtocol.TYPE_READ -> scope.launch(Dispatchers.IO) { handleRead(json) }
@@ -61,7 +64,10 @@ class MessageRouter(
         Log.d(TAG, "[TOR] Received payload type=${json.optString("type")}")
         when (json.optString("type")) {
             MeshProtocol.TYPE_MSG -> scope.launch(Dispatchers.IO) { handleEncrypted(json, null, MeshProtocol.TYPE_MSG) }
-            MeshProtocol.TYPE_MEDIA_CHUNK -> scope.launch(Dispatchers.IO) { handleEncrypted(json, null, MeshProtocol.TYPE_MEDIA_CHUNK) }
+            MeshProtocol.TYPE_MEDIA_OFFER,
+            MeshProtocol.TYPE_MEDIA_CHUNK,
+            MeshProtocol.TYPE_MEDIA_ACK,
+            MeshProtocol.TYPE_MEDIA_COMPLETE -> scope.launch(Dispatchers.IO) { handleEncrypted(json, null, json.optString("type")) }
             MeshProtocol.TYPE_RELAY -> scope.launch(Dispatchers.IO) { handleRelay(null, json) }
             MeshProtocol.TYPE_ACK -> scope.launch(Dispatchers.IO) { handleAck(json) }
             MeshProtocol.TYPE_READ -> scope.launch(Dispatchers.IO) { handleRead(json) }
@@ -481,9 +487,12 @@ class MessageRouter(
             return
         }
 
-        if (messageType == MeshProtocol.TYPE_MEDIA_CHUNK) {
+        if (messageType == MeshProtocol.TYPE_MEDIA_CHUNK || 
+            messageType == MeshProtocol.TYPE_MEDIA_OFFER || 
+            messageType == MeshProtocol.TYPE_MEDIA_ACK ||
+            messageType == MeshProtocol.TYPE_MEDIA_COMPLETE) {
             val service = com.astramesh.app.service.AstraMeshService.getInstance()
-            service?.mediaTransferManager?.receiveChunk(plaintext, senderKey)
+            service?.mediaTransferManager?.handleMediaPacket(messageType, plaintext, senderKey)
             return
         }
 

@@ -1,5 +1,7 @@
 package com.astramesh.app.ui.screens
 
+import com.astramesh.app.ui.theme.AstraTheme
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -85,7 +87,7 @@ fun ChatListScreen(
     Scaffold(
         containerColor = DeepBlack,
         floatingActionButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AstraTheme.spacing.small)) {
                 FloatingActionButton(
                     onClick = { showShareContact = true },
                     containerColor = CardSurface,
@@ -106,7 +108,7 @@ fun ChatListScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.background)
-                    .padding(top = 16.dp, start = 20.dp, end = 20.dp, bottom = 8.dp)
+                    .padding(top = AstraTheme.spacing.standard, start = AstraTheme.spacing.large, end = AstraTheme.spacing.large, bottom = AstraTheme.spacing.small)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -129,10 +131,10 @@ fun ChatListScreen(
                 item {
                     Text(
                         "Connection Requests",
-                        fontSize = 14.sp,
+                        fontSize = AstraTheme.typography.bodyMedium.fontSize,
                         fontWeight = FontWeight.SemiBold,
                         color = AccentPink,
-                        modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 8.dp)
+                        modifier = Modifier.padding(start = AstraTheme.spacing.large, top = AstraTheme.spacing.standard, bottom = AstraTheme.spacing.small)
                     )
                 }
                 items(pendingRequests) { request ->
@@ -148,16 +150,16 @@ fun ChatListScreen(
                 item {
                     Text(
                         "Nearby",
-                        fontSize = 14.sp,
+                        fontSize = AstraTheme.typography.bodyMedium.fontSize,
                         fontWeight = FontWeight.SemiBold,
                         color = AccentCyan,
-                        modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 8.dp)
+                        modifier = Modifier.padding(start = AstraTheme.spacing.large, top = AstraTheme.spacing.standard, bottom = AstraTheme.spacing.small)
                     )
                 }
                 item {
                     LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        contentPadding = PaddingValues(horizontal = AstraTheme.spacing.standard),
+                        horizontalArrangement = Arrangement.spacedBy(AstraTheme.spacing.medium)
                     ) {
                         items(nearbyDevices) { device ->
                             NearbyDeviceChip(
@@ -172,28 +174,28 @@ fun ChatListScreen(
             item {
                 Text(
                     "Messages",
-                    fontSize = 14.sp,
+                    fontSize = AstraTheme.typography.bodyMedium.fontSize,
                     fontWeight = FontWeight.SemiBold,
                     color = MutedGray,
-                    modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 8.dp)
+                    modifier = Modifier.padding(start = AstraTheme.spacing.large, top = AstraTheme.spacing.large, bottom = AstraTheme.spacing.small)
                 )
             }
 
             if (contacts.isEmpty()) {
                 item {
                     Box(
-                        modifier = Modifier.fillMaxWidth().padding(40.dp),
+                        modifier = Modifier.fillMaxWidth().padding(AstraTheme.spacing.massive2),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Rounded.Bluetooth, null, modifier = Modifier.size(48.dp), tint = DimGray)
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text("No conversations yet", fontSize = 16.sp, color = MutedGray)
+                            Icon(Icons.Rounded.Bluetooth, null, modifier = Modifier.size(AstraTheme.spacing.massive3), tint = DimGray)
+                            Spacer(modifier = Modifier.height(AstraTheme.spacing.medium))
+                            Text("No conversations yet", fontSize = AstraTheme.typography.bodyLarge.fontSize, color = MutedGray)
                             Text(
                                 "Add a contact key for Tor, or connect to someone nearby",
-                                fontSize = 13.sp,
+                                fontSize = AstraTheme.typography.bodySmall.fontSize,
                                 color = DimGray,
-                                modifier = Modifier.padding(top = 4.dp)
+                                modifier = Modifier.padding(top = AstraTheme.spacing.tiny)
                             )
                         }
                     }
@@ -260,11 +262,11 @@ fun ChatListScreen(
                 Column {
                     Text(
                         "Share this with distant contacts. Includes your Tor .onion address when connected.",
-                        fontSize = 13.sp,
+                        fontSize = AstraTheme.typography.bodySmall.fontSize,
                         color = MutedGray
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(myContactString, fontSize = 11.sp, color = AccentCyan)
+                    Spacer(modifier = Modifier.height(AstraTheme.spacing.medium))
+                    Text(myContactString, fontSize = AstraTheme.typography.labelSmall.fontSize, color = AccentCyan)
                 }
             },
             containerColor = CardSurface,
@@ -302,32 +304,32 @@ fun ConnectionRequestCard(
     onReject: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = AstraTheme.spacing.standard, vertical = AstraTheme.spacing.tiny),
+        shape = RoundedCornerShape(AstraTheme.spacing.standard),
         colors = CardDefaults.cardColors(containerColor = CardSurface)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(AstraTheme.spacing.standard),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AstraAvatar(name = request.name, size = 48.dp)
-            Spacer(modifier = Modifier.width(12.dp))
+            AstraAvatar(name = request.name, size = AstraTheme.spacing.massive3)
+            Spacer(modifier = Modifier.width(AstraTheme.spacing.medium))
             Column(modifier = Modifier.weight(1f)) {
-                Text(request.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = SoftWhite)
-                Text("wants to connect", fontSize = 13.sp, color = MutedGray)
+                Text(request.name, fontSize = AstraTheme.typography.bodyLarge.fontSize, fontWeight = FontWeight.SemiBold, color = SoftWhite)
+                Text("wants to connect", fontSize = AstraTheme.typography.bodySmall.fontSize, color = MutedGray)
             }
             IconButton(
                 onClick = onAccept,
-                modifier = Modifier.size(40.dp).clip(CircleShape).background(NeonGreen.copy(alpha = 0.15f))
+                modifier = Modifier.size(AstraTheme.spacing.massive2).clip(CircleShape).background(NeonGreen.copy(alpha = 0.15f))
             ) {
-                Icon(Icons.Rounded.CheckCircle, "Accept", tint = NeonGreen, modifier = Modifier.size(24.dp))
+                Icon(Icons.Rounded.CheckCircle, "Accept", tint = NeonGreen, modifier = Modifier.size(AstraTheme.spacing.extraLarge))
             }
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(AstraTheme.spacing.small))
             IconButton(
                 onClick = onReject,
-                modifier = Modifier.size(40.dp).clip(CircleShape).background(AccentPink.copy(alpha = 0.15f))
+                modifier = Modifier.size(AstraTheme.spacing.massive2).clip(CircleShape).background(AccentPink.copy(alpha = 0.15f))
             ) {
-                Icon(Icons.Rounded.Close, "Reject", tint = AccentPink, modifier = Modifier.size(24.dp))
+                Icon(Icons.Rounded.Close, "Reject", tint = AccentPink, modifier = Modifier.size(AstraTheme.spacing.extraLarge))
             }
         }
     }
@@ -336,37 +338,37 @@ fun ConnectionRequestCard(
 @Composable
 fun NearbyDeviceChip(device: NearbyDevice, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable(onClick = onClick)) {
-        AstraAvatar(name = device.name, size = 64.dp)
+        AstraAvatar(name = device.name, size = AstraTheme.spacing.massive5)
         Spacer(modifier = Modifier.height(6.dp))
-        Text(device.name, fontSize = 11.sp, color = MutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 70.dp))
+        Text(device.name, fontSize = AstraTheme.typography.labelSmall.fontSize, color = MutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 70.dp))
     }
 }
 
 @Composable
 fun ContactRow(contact: ContactEntity, isConnected: Boolean, lastMessageText: String, lastMessageTime: Long?, unreadCount: Int = 0, onClick: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 12.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = AstraTheme.spacing.large, vertical = AstraTheme.spacing.medium),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AstraAvatar(name = contact.name, size = 56.dp, isOnline = isConnected)
+        AstraAvatar(name = contact.name, size = AstraTheme.spacing.massive4, isOnline = isConnected)
         Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(contact.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = SoftWhite, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(contact.name, fontSize = AstraTheme.typography.bodyLarge.fontSize, fontWeight = FontWeight.SemiBold, color = SoftWhite, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 if (lastMessageTime != null) {
                     val timeString = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(lastMessageTime))
-                    Text(timeString, fontSize = 11.sp, color = if (unreadCount > 0) AccentCyan else MutedGray)
+                    Text(timeString, fontSize = AstraTheme.typography.labelSmall.fontSize, color = if (unreadCount > 0) AccentCyan else MutedGray)
                 }
             }
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(AstraTheme.spacing.tiny))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(lastMessageText, fontSize = 14.sp, color = if (unreadCount > 0) SoftWhite else DimGray, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(lastMessageText, fontSize = AstraTheme.typography.bodyMedium.fontSize, color = if (unreadCount > 0) SoftWhite else DimGray, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 if (unreadCount > 0) {
                     Box(
-                        modifier = Modifier.padding(start = 8.dp).size(20.dp).clip(CircleShape).background(AccentCyan),
+                        modifier = Modifier.padding(start = AstraTheme.spacing.small).size(AstraTheme.spacing.large).clip(CircleShape).background(AccentCyan),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(unreadCount.toString(), fontSize = 10.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                        Text(unreadCount.toString(), fontSize = AstraTheme.typography.labelSmall.fontSize, color = Color.Black, fontWeight = FontWeight.Bold)
                     }
                 }
             }

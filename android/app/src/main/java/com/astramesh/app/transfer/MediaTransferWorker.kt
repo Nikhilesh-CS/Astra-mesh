@@ -15,6 +15,8 @@ import org.json.JSONObject
 import java.io.File
 import java.io.RandomAccessFile
 import java.util.Base64
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.takeWhile
 
 class MediaTransferWorker(
     context: Context,
@@ -67,63 +69,131 @@ class MediaTransferWorker(
         val startTime = System.currentTimeMillis()
         Log.i(TAG, "Transfer Started\nTransport: ${if(useWifiDirect) "Wi-Fi Direct" else transport.name}\nFile Size: $fileSize\nChunk Size: $finalChunkSize\nTotal Chunks: $totalChunks")
 
+        val mediaTransferManager = com.astramesh.app.service.AstraMeshService.getInstance()?.mediaTransferManager ?: return@withContext Result.retry()
+
         try {
+            // PHASE 1: Send METADATA (OFFER) and wait for ACK
+            val metadataPayload = JSONObject().apply {
+                put("msgId", messageId)
+                put("mimeType", message.mimeType)
+                put("messageType", message.messageType)
+                put("fileName", message.fileName)
+                put("checksum", message.checksum)
+                put("fileSize", message.fileSize)
+                put("totalChunks", totalChunks)
+            }.toString()
+
+            var metadataAckReceived = false
+            for (attempt in 1..3) {
+                messageRouter.sendRawPayload(message.contactKey, metadataPayload, com.astramesh.app.network.MeshProtocol.TYPE_MEDIA_OFFER)
+                try {
+                    kotlinx.coroutines.withTimeout(15_000) {
+                        mediaTransferManager.ackFlow.first { it.first == messageId && it.second == -1 }
+                    }
+                    metadataAckReceived = true
+                    break
+                } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                    Log.w(TAG, "Timeout waiting for METADATA ACK, attempt $attempt")
+                }
+            }
+            if (!metadataAckReceived) {
+                Log.e(TAG, "Failed to get METADATA ACK")
+                db.mediaTransferDao().updateStatus(messageId, TransferStatus.RETRYING.name, System.currentTimeMillis())
+                return@withContext Result.retry()
+            }
+
+            // PHASE 2: Send Chunks with Sliding Window
             RandomAccessFile(file, "r").use { raf ->
                 var chunkIndex = transfer.completedChunks
                 
                 while (chunkIndex < totalChunks) {
                     val batchSize = minOf(windowSize, totalChunks - chunkIndex)
-                    val deferredList = mutableListOf<kotlinx.coroutines.Deferred<Boolean>>()
-                    
-                    for (i in 0 until batchSize) {
-                        val currentChunkIndex = chunkIndex + i
-                        deferredList.add(async(Dispatchers.Default) {
-                            val buffer = ByteArray(finalChunkSize)
-                            var actualChunk: ByteArray
-                            synchronized(raf) {
-                                raf.seek((currentChunkIndex * finalChunkSize).toLong())
-                                val bytesRead = raf.read(buffer)
-                                actualChunk = if (bytesRead == finalChunkSize) buffer else buffer.copyOf(maxOf(0, bytesRead))
-                            }
-                            
-                            val base64Chunk = Base64.getEncoder().encodeToString(actualChunk)
-                            
-                            val chunkPayload = JSONObject().apply {
-                                put("msgId", messageId)
-                                put("chunkIndex", currentChunkIndex)
-                                put("totalChunks", totalChunks)
-                                put("data", base64Chunk)
-                                if (currentChunkIndex == 0) {
-                                    put("mimeType", message.mimeType)
-                                    put("messageType", message.messageType)
-                                    put("fileName", message.fileName)
-                                    put("checksum", message.checksum)
-                                    put("fileSize", message.fileSize)
+                    val unackedChunks = mutableSetOf<Int>()
+                    for (i in 0 until batchSize) unackedChunks.add(chunkIndex + i)
+
+                    var batchAttempts = 0
+                    while (unackedChunks.isNotEmpty() && batchAttempts < 5) {
+                        batchAttempts++
+                        val deferredList = mutableListOf<Deferred<Boolean>>()
+                        
+                        for (currentChunkIndex in unackedChunks) {
+                            deferredList.add(async(Dispatchers.Default) {
+                                val buffer = ByteArray(finalChunkSize)
+                                var actualChunk: ByteArray
+                                val offset = (currentChunkIndex * finalChunkSize).toLong()
+                                synchronized(raf) {
+                                    raf.seek(offset)
+                                    val bytesRead = raf.read(buffer)
+                                    actualChunk = if (bytesRead == finalChunkSize) buffer else buffer.copyOf(maxOf(0, bytesRead))
                                 }
-                            }.toString()
-                            
-                            val result = messageRouter.sendRawPayload(message.contactKey, chunkPayload, com.astramesh.app.network.MeshProtocol.TYPE_MEDIA_CHUNK)
-                            result.success
-                        })
+                                
+                                val base64Chunk = Base64.getEncoder().encodeToString(actualChunk)
+                                
+                                val chunkPayload = JSONObject().apply {
+                                    put("msgId", messageId)
+                                    put("chunkIndex", currentChunkIndex)
+                                    put("offset", offset)
+                                    put("data", base64Chunk)
+                                }.toString()
+                                
+                                val result = messageRouter.sendRawPayload(message.contactKey, chunkPayload, com.astramesh.app.network.MeshProtocol.TYPE_MEDIA_CHUNK)
+                                result.success
+                            })
+                        }
+                        
+                        val sendResults = deferredList.map { it.await() }
+                        if (sendResults.any { !it }) {
+                            kotlinx.coroutines.delay(1000)
+                            continue
+                        }
+
+                        // Wait for ACKs for the current window
+                        try {
+                            kotlinx.coroutines.withTimeout(20_000) {
+                                mediaTransferManager.ackFlow
+                                    .takeWhile { unackedChunks.isNotEmpty() }
+                                    .collect { ack ->
+                                        if (ack.first == messageId) {
+                                            unackedChunks.remove(ack.second)
+                                        }
+                                    }
+                            }
+                        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                            Log.w(TAG, "Timeout waiting for batch ACKs. Unacked: $unackedChunks")
+                        }
                     }
-                    
-                    val results = deferredList.map { it.await() }
-                    if (results.any { !it }) {
+
+                    if (unackedChunks.isNotEmpty()) {
+                        Log.e(TAG, "Failed to send batch after 5 attempts. Unacked: $unackedChunks")
                         db.mediaTransferDao().updateStatus(messageId, TransferStatus.RETRYING.name, System.currentTimeMillis())
                         return@withContext Result.retry()
                     }
                     
                     chunkIndex += batchSize
-                    
-                    // DB Optimization: Update every 5% or 10 chunks or at end
+                    db.mediaTransferDao().updateProgress(messageId, chunkIndex, TransferStatus.SENDING.name, System.currentTimeMillis())
                     val progressPercent = ((chunkIndex).toFloat() / totalChunks * 100).toInt()
-                    val prevPercent = (((chunkIndex - batchSize).toFloat() / totalChunks) * 100).toInt()
-                    
-                    if (chunkIndex % 10 == 0 || chunkIndex == totalChunks || (progressPercent - prevPercent >= 5)) {
-                        db.mediaTransferDao().updateProgress(messageId, chunkIndex, TransferStatus.SENDING.name, System.currentTimeMillis())
-                        db.openHelper.writableDatabase.execSQL("UPDATE messages SET transferProgress = ? WHERE messageId = ?", arrayOf(progressPercent, messageId))
-                    }
+                    db.openHelper.writableDatabase.execSQL("UPDATE messages SET transferProgress = ? WHERE messageId = ?", arrayOf(progressPercent, messageId))
                 }
+            }
+
+            // PHASE 3: Wait for COMPLETE ACK
+            var completeAckReceived = false
+            for (attempt in 1..5) {
+                try {
+                    kotlinx.coroutines.withTimeout(20_000) {
+                        mediaTransferManager.ackFlow.first { it.first == messageId && it.second == -2 }
+                    }
+                    completeAckReceived = true
+                    break
+                } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                    Log.w(TAG, "Timeout waiting for COMPLETE ACK, attempt $attempt")
+                }
+            }
+
+            if (!completeAckReceived) {
+                Log.e(TAG, "Failed to receive COMPLETE ACK")
+                db.mediaTransferDao().updateStatus(messageId, TransferStatus.RETRYING.name, System.currentTimeMillis())
+                return@withContext Result.retry()
             }
 
             val transferTime = (System.currentTimeMillis() - startTime) / 1000.0

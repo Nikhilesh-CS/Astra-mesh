@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import com.astramesh.app.ui.theme.AstraTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -57,18 +58,18 @@ fun ContactsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .padding(40.dp),
+                    .padding(AstraTheme.spacing.massive2),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Rounded.Bluetooth, contentDescription = null, modifier = Modifier.size(64.dp), tint = DimGray)
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Icon(Icons.Rounded.Bluetooth, contentDescription = null, modifier = Modifier.size(AstraTheme.spacing.massive5), tint = DimGray)
+                    Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
                     Text("No contacts yet.", fontSize = 18.sp, color = SoftWhite, fontWeight = FontWeight.SemiBold)
                     Text(
                         "Discover nearby users or share your onion address.",
-                        fontSize = 14.sp,
+                        fontSize = AstraTheme.typography.bodyMedium.fontSize,
                         color = MutedGray,
-                        modifier = Modifier.padding(top = 8.dp),
+                        modifier = Modifier.padding(top = AstraTheme.spacing.small),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
@@ -109,16 +110,16 @@ fun ContactItemRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .padding(horizontal = AstraTheme.spacing.large, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AstraAvatar(name = contact.name, size = 56.dp, isOnline = isNearby || isTor)
-        Spacer(modifier = Modifier.width(16.dp))
+        AstraAvatar(name = contact.name, size = AstraTheme.spacing.massive4, isOnline = isNearby || isTor)
+        Spacer(modifier = Modifier.width(AstraTheme.spacing.standard))
         
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = contact.name,
-                fontSize = 16.sp,
+                fontSize = AstraTheme.typography.bodyLarge.fontSize,
                 fontWeight = FontWeight.SemiBold,
                 color = SoftWhite,
                 maxLines = 1,
@@ -129,7 +130,7 @@ fun ContactItemRow(
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "🧅 ${contact.onionAddress.take(16)}...",
-                    fontSize = 12.sp,
+                    fontSize = AstraTheme.typography.labelMedium.fontSize,
                     color = MutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -138,27 +139,27 @@ fun ContactItemRow(
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "📍 ${contact.endpointId}",
-                    fontSize = 12.sp,
+                    fontSize = AstraTheme.typography.labelMedium.fontSize,
                     color = MutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
             
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(AstraTheme.spacing.tiny))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (isNearby) {
-                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(AccentCyan))
+                    Box(modifier = Modifier.size(AstraTheme.spacing.small).clip(CircleShape).background(AccentCyan))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Nearby (Wi-Fi Direct / BT)", fontSize = 11.sp, color = AccentCyan)
+                    Text("Nearby (Wi-Fi Direct / BT)", fontSize = AstraTheme.typography.labelSmall.fontSize, color = AccentCyan)
                 } else if (isTor) {
-                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(NeonGreen))
+                    Box(modifier = Modifier.size(AstraTheme.spacing.small).clip(CircleShape).background(NeonGreen))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Online via Tor", fontSize = 11.sp, color = NeonGreen)
+                    Text("Online via Tor", fontSize = AstraTheme.typography.labelSmall.fontSize, color = NeonGreen)
                 } else {
-                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(DimGray))
+                    Box(modifier = Modifier.size(AstraTheme.spacing.small).clip(CircleShape).background(DimGray))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Offline", fontSize = 11.sp, color = MutedGray)
+                    Text("Offline", fontSize = AstraTheme.typography.labelSmall.fontSize, color = MutedGray)
                 }
             }
         }

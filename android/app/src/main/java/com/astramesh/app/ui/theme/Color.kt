@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 
 // Premium Dark Palette
 val DeepSpace = Color(0xFF0D0D12) // Slightly violet deep black for background
+val AmoledBlack = Color(0xFF000000) // Pure black for AMOLED theme
 val SurfaceDark = Color(0xFF16161D) // Slightly lighter for cards
 val SurfaceDarker = Color(0xFF121218)
 val TextPrimary = Color(0xFFF0F0F5)
@@ -32,6 +33,7 @@ val DisconnectedGlow = Color(0x33606070)
 val ErrorRed = Color(0xFFFF5252)
 val SuccessGreen = Color(0xFF00E676)
 val WarningYellow = Color(0xFFFFD740)
+val InfoBlue = Color(0xFF00B0FF)
 
 // Legacy Aliases for compilation compatibility
 val DeepBlack = DeepSpace

@@ -32,6 +32,14 @@ enum class NetworkTransport {
 val LocalActiveTransport = staticCompositionLocalOf { NetworkTransport.DISCONNECTED }
 val LocalTransportColor = staticCompositionLocalOf { DisconnectedAccent }
 
+// Design Tokens Locals
+val LocalSpacing = staticCompositionLocalOf { defaultAstraSpacing }
+val LocalRadii = staticCompositionLocalOf { defaultAstraRadii }
+val LocalElevations = staticCompositionLocalOf { defaultAstraElevations }
+val LocalIconSizes = staticCompositionLocalOf { defaultAstraIconSizes }
+val LocalAvatarSizes = staticCompositionLocalOf { defaultAstraAvatarSizes }
+val LocalOpacities = staticCompositionLocalOf { defaultAstraOpacities }
+
 fun Modifier.glassmorphism(
     cornerRadius: Dp = 16.dp,
     backgroundColor: Color = Color(0x15FFFFFF),
@@ -58,6 +66,7 @@ private val DarkColorScheme = darkColorScheme(
 @Composable
 fun AstraMeshTheme(
     activeTransport: NetworkTransport = NetworkTransport.DISCONNECTED,
+    useAmoledTheme: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val view = LocalView.current
@@ -71,9 +80,12 @@ tailrec fun android.content.Context.findActivity(): Activity? = when (this) {
         SideEffect {
             val window = view.context.findActivity()?.window
             if (window != null) {
-                window.statusBarColor = DeepSpace.toArgb()
-                window.navigationBarColor = DeepSpace.toArgb()
+                // Let the framework handle edge-to-edge styling, just ensure status bar is transparent
+                window.statusBarColor = Color.Transparent.toArgb()
+                window.navigationBarColor = Color.Transparent.toArgb()
+                WindowCompat.setDecorFitsSystemWindows(window, false)
                 WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+                WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = false
             }
         }
     }
@@ -93,13 +105,25 @@ tailrec fun android.content.Context.findActivity(): Activity? = when (this) {
 
     // Override primary color dynamically based on transport
     val dynamicColorScheme = DarkColorScheme.copy(
+        background = if (useAmoledTheme) AmoledBlack else DeepSpace,
         primary = animatedColor,
         secondary = animatedColor
     )
 
+    val windowSizeClass = rememberWindowSizeClass()
+    val dynamicSpacing = getAdaptiveSpacing(windowSizeClass)
+    val dynamicRadii = getAdaptiveRadii(windowSizeClass)
+    val dynamicIconSizes = getAdaptiveIconSizes(windowSizeClass)
+
     CompositionLocalProvider(
         LocalActiveTransport provides activeTransport,
-        LocalTransportColor provides animatedColor
+        LocalTransportColor provides animatedColor,
+        LocalSpacing provides dynamicSpacing,
+        LocalRadii provides dynamicRadii,
+        LocalElevations provides defaultAstraElevations,
+        LocalIconSizes provides dynamicIconSizes,
+        LocalAvatarSizes provides defaultAstraAvatarSizes,
+        LocalOpacities provides defaultAstraOpacities
     ) {
         MaterialTheme(
             colorScheme = dynamicColorScheme,
@@ -107,4 +131,24 @@ tailrec fun android.content.Context.findActivity(): Activity? = when (this) {
             content = content
         )
     }
+}
+
+// Convenient accessor object
+object AstraTheme {
+    val spacing: AstraSpacing
+        @Composable get() = LocalSpacing.current
+    val radii: AstraRadii
+        @Composable get() = LocalRadii.current
+    val elevations: AstraElevations
+        @Composable get() = LocalElevations.current
+    val iconSizes: AstraIconSizes
+        @Composable get() = LocalIconSizes.current
+    val avatarSizes: AstraAvatarSizes
+        @Composable get() = LocalAvatarSizes.current
+    val opacities: AstraOpacities
+        @Composable get() = LocalOpacities.current
+    val colors: androidx.compose.material3.ColorScheme
+        @Composable get() = MaterialTheme.colorScheme
+    val typography: androidx.compose.material3.Typography
+        @Composable get() = MaterialTheme.typography
 }

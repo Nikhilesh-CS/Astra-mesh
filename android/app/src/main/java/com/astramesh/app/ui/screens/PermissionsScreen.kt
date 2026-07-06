@@ -11,6 +11,7 @@ import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import com.astramesh.app.ui.theme.AstraTheme
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -29,7 +30,7 @@ fun PermissionsScreen(onRetry: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(DeepBlack)
-            .padding(32.dp),
+            .padding(AstraTheme.spacing.massive1),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -39,40 +40,40 @@ fun PermissionsScreen(onRetry: () -> Unit) {
             Icon(
                 Icons.Rounded.Bluetooth,
                 contentDescription = null,
-                modifier = Modifier.size(64.dp),
+                modifier = Modifier.size(AstraTheme.spacing.massive5),
                 tint = AccentPink
             )
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(AstraTheme.spacing.extraLarge))
             Text(
                 "Permissions Required",
-                fontSize = 24.sp,
+                fontSize = AstraTheme.typography.headlineMedium.fontSize,
                 fontWeight = FontWeight.Bold,
                 color = SoftWhite
             )
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(AstraTheme.spacing.medium))
             Text(
                 "Astra Mesh needs Bluetooth and Location to discover nearby devices over Wi-Fi Direct and Bluetooth.\n\nTor (via Orbot) is used for secure distant messaging — no central server.",
-                fontSize = 14.sp,
+                fontSize = AstraTheme.typography.bodyMedium.fontSize,
                 color = MutedGray,
                 textAlign = TextAlign.Center,
-                lineHeight = 20.sp
+                lineHeight = AstraTheme.typography.titleLarge.fontSize
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.LocationOn, null, tint = AccentCyan, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Location is required by Android for BLE scanning", fontSize = 12.sp, color = DimGray)
+                Spacer(modifier = Modifier.width(AstraTheme.spacing.small))
+                Text("Location is required by Android for BLE scanning", fontSize = AstraTheme.typography.labelMedium.fontSize, color = DimGray)
             }
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(AstraTheme.spacing.massive1))
             Button(
                 onClick = onRetry,
                 modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(AstraTheme.spacing.standard),
                 colors = ButtonDefaults.buttonColors(containerColor = AccentViolet)
             ) {
                 Text("Grant Permissions", fontWeight = FontWeight.SemiBold)
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(AstraTheme.spacing.medium))
             OutlinedButton(
                 onClick = {
                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
@@ -81,7 +82,7 @@ fun PermissionsScreen(onRetry: () -> Unit) {
                     context.startActivity(intent)
                 },
                 modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(AstraTheme.spacing.standard)
             ) {
                 Text("Open Settings", color = AccentCyan)
             }
