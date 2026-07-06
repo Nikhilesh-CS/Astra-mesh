@@ -177,6 +177,21 @@ class MessageRouter(
         return SendResult(false, Transport.FAILED, "Peer offline — move closer or wait for Tor")
     }
 
+    fun getBestTransport(contact: ContactEntity): Transport {
+        val connected = nearbyManager.connectedEndpoints.value
+        if (contact.endpointId.isNotEmpty() && connected.contains(contact.endpointId)) {
+            return Transport.NEARBY_DIRECT
+        }
+        if (connected.isNotEmpty()) {
+            return Transport.NEARBY_RELAY
+        }
+        val onion = contact.onionAddress
+        if (onion.isNotBlank() && torManager.isTorReady.value) {
+            return Transport.TOR
+        }
+        return Transport.FAILED
+    }
+
     suspend fun sendRawPayload(contactKey: String, rawText: String, messageType: String = MeshProtocol.TYPE_MSG): SendResult = withContext(Dispatchers.IO) {
         val identity = identity ?: return@withContext SendResult(false, Transport.FAILED, "Not logged in")
         val contact = db.contactDao().getContact(contactKey)
@@ -341,6 +356,26 @@ class MessageRouter(
         }
     }
 
+    fun sendMediaAck(messageId: String, senderKey: String) {
+        if (messageId.isBlank()) return
+        val ackWire = MeshProtocol.encodeAck(messageId, mySigningKeyHex, myOnionAddress)
+        Log.d(TAG, "[MEDIA_ACK] Sending ACK for $messageId to $senderKey")
+
+        scope.launch(Dispatchers.IO) {
+            val contact = db.contactDao().getContact(senderKey) ?: return@launch
+            val connected = nearbyManager.connectedEndpoints.value
+            
+            if (contact.endpointId.isNotEmpty() && connected.contains(contact.endpointId)) {
+                nearbyManager.sendRaw(contact.endpointId, ackWire)
+            } else {
+                val onion = contact.onionAddress
+                if (!onion.isNullOrBlank() && torManager.isTorReady.value) {
+                    torManager.sendToOnion(onion, ackWire)
+                }
+            }
+        }
+    }
+
     // ──────────────────────── HELLO EXCHANGE ────────────────────────
 
     fun broadcastHello(endpointId: String) {
@@ -449,9 +484,6 @@ class MessageRouter(
         if (messageType == MeshProtocol.TYPE_MEDIA_CHUNK) {
             val service = com.astramesh.app.service.AstraMeshService.getInstance()
             service?.mediaTransferManager?.receiveChunk(plaintext, senderKey)
-            if (messageId.isNotBlank()) {
-                sendAck(messageId, senderKey, viaEndpoint, senderOnion)
-            }
             return
         }
 

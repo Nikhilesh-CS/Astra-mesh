@@ -22,7 +22,8 @@ class VoiceNoteRecorder(private val context: Context) {
             val dir = File(context.cacheDir, "voice_notes")
             if (!dir.exists()) dir.mkdirs()
 
-            outputFile = File(dir, "voice_note_${System.currentTimeMillis()}.ogg")
+            val extension = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) "ogg" else "m4a"
+            outputFile = File(dir, "voice_note_${System.currentTimeMillis()}.$extension")
 
             recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 MediaRecorder(context)

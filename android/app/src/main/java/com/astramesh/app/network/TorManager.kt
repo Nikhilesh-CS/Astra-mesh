@@ -12,6 +12,7 @@ import java.net.Socket
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import android.os.Build
+import android.util.Base64
 
 class TorManager(private val context: Context) {
     companion object {
@@ -283,6 +284,65 @@ class TorManager(private val context: Context) {
         torProcess?.destroy()
         _isTorReady.value = false
         updateState(TorState.Stopped)
+    }
+
+    /**
+     * Data class to securely hold exported Tor keys in memory temporarily during a backup.
+     */
+    data class ExportedTorKeys(
+        val pubKeyB64: String,
+        val secKeyB64: String,
+        val onionAddress: String
+    )
+
+    /**
+     * Reads and exports the Tor keys directly from the filesystem.
+     * Returns the keys encoded in Base64 for the binary files.
+     */
+    fun exportHiddenServiceKeys(): ExportedTorKeys {
+        val torDir = File(context.filesDir, "tor")
+        val hsDir = File(torDir, "hidden_service")
+        
+        val pubKeyFile = File(hsDir, "hs_ed25519_public_key")
+        val secKeyFile = File(hsDir, "hs_ed25519_secret_key")
+        val hostnameFile = File(hsDir, "hostname")
+
+        if (!pubKeyFile.exists() || !secKeyFile.exists() || !hostnameFile.exists()) {
+            throw IllegalStateException("Tor hidden service keys do not exist on disk.")
+        }
+
+        val pubKeyB64 = Base64.encodeToString(pubKeyFile.readBytes(), Base64.NO_WRAP)
+        val secKeyB64 = Base64.encodeToString(secKeyFile.readBytes(), Base64.NO_WRAP)
+        val hostname = hostnameFile.readText().trim()
+
+        return ExportedTorKeys(pubKeyB64, secKeyB64, hostname)
+    }
+
+    /**
+     * Safely injects restored identity keys into the hidden_service directory.
+     * Must be called while Tor is NOT running.
+     */
+    fun importHiddenServiceKeys(pubKeyB64: String, secKeyB64: String, onionAddress: String) {
+        try {
+            val torDir = File(context.filesDir, "tor")
+            val hsDir = File(torDir, "hidden_service").apply { mkdirs() }
+            
+            val pubKeyFile = File(hsDir, "hs_ed25519_public_key")
+            val secKeyFile = File(hsDir, "hs_ed25519_secret_key")
+            val hostnameFile = File(hsDir, "hostname")
+
+            // Write raw binary keys
+            pubKeyFile.writeBytes(Base64.decode(pubKeyB64, Base64.NO_WRAP))
+            secKeyFile.writeBytes(Base64.decode(secKeyB64, Base64.NO_WRAP))
+            
+            // Write hostname (onion address)
+            hostnameFile.writeText(onionAddress + "\n")
+            
+            addTorLog("[RESTORE] Tor hidden service keys imported successfully.")
+        } catch (e: Exception) {
+            addTorLog("[ERROR] Failed to import Tor keys: ${e.message}")
+            throw e
+        }
     }
 
     fun createTorSocket(onionHost: String, port: Int = LOCAL_PORT, timeoutMs: Int = 60_000): Socket? {

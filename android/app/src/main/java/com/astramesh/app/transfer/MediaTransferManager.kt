@@ -126,6 +126,34 @@ class MediaTransferManager(
             val sandboxDir = File(context.getExternalFilesDir("media"), typeDir)
             if (!sandboxDir.exists()) sandboxDir.mkdirs()
 
+            if (messageType == "IMAGE") {
+                val destFile = File(sandboxDir, "${messageId}.jpg")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    val bitmap = android.graphics.BitmapFactory.decodeStream(input) ?: return null
+                    val maxDim = 1920
+                    val width = bitmap.width
+                    val height = bitmap.height
+                    
+                    val scaledBitmap = if (width > maxDim || height > maxDim) {
+                        val ratio = kotlin.math.min(maxDim.toFloat() / width, maxDim.toFloat() / height)
+                        val newWidth = (width * ratio).toInt()
+                        val newHeight = (height * ratio).toInt()
+                        android.graphics.Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+                    } else {
+                        bitmap
+                    }
+                    
+                    FileOutputStream(destFile).use { output ->
+                        scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, output)
+                    }
+                    if (scaledBitmap != bitmap) {
+                        scaledBitmap.recycle()
+                    }
+                    bitmap.recycle()
+                }
+                return destFile
+            }
+
             // Guess extension from mime type or URI. Simplification: just use messageId.
             val extension = context.contentResolver.getType(uri)?.split("/")?.lastOrNull() ?: "bin"
             val destFile = File(sandboxDir, "${messageId}.${extension}")
@@ -246,7 +274,11 @@ class MediaTransferManager(
                     db.mediaTransferDao().updateProgress(messageId, completed, TransferStatus.RECEIVING.name, System.currentTimeMillis())
                     
                     val progressPercent = ((completed.toFloat() / totalChunks) * 100).toInt()
-                    db.messageDao().updateTransferProgress(messageId, progressPercent)
+                    val prevPercent = (((completed - 1).toFloat() / totalChunks) * 100).toInt()
+                    
+                    if (completed % 10 == 0 || completed == totalChunks || (progressPercent - prevPercent >= 5)) {
+                        db.messageDao().updateTransferProgress(messageId, progressPercent)
+                    }
 
                     if (completed >= totalChunks) {
                         // Reassemble & Verify
@@ -272,6 +304,9 @@ class MediaTransferManager(
                             db.mediaTransferDao().updateStatus(messageId, TransferStatus.COMPLETED.name, System.currentTimeMillis())
                             db.messageDao().markMediaDelivered(messageId, "delivered", destFile.absolutePath)
                             Log.d(TAG, "Media transfer completed and verified: $messageId")
+                            
+                            // Send ACK back to sender so they can mark it as delivered
+                            messageRouter.sendMediaAck(messageId, senderKey)
                         } else {
                             Log.e(TAG, "Checksum mismatch for msgId: $messageId. Expected: ${msg.checksum}, Got: $finalChecksum")
                             db.mediaTransferDao().updateStatus(messageId, TransferStatus.FAILED.name, System.currentTimeMillis())

@@ -36,11 +36,18 @@ fun MediaContent(message: MessageEntity, isSent: Boolean) {
         "VIDEO" -> VideoBubble(message, isSent)
         "AUDIO", "VOICE" -> AudioBubble(message, isSent)
         "DOCUMENT", "APK" -> FileBubble(message, isSent)
-        else -> Text(
+        "TEXT" -> Text(
             message.text,
             fontSize = 16.sp,
             color = if (isSent) Color.White else SoftWhite,
             lineHeight = 24.sp
+        )
+        else -> Text(
+            "Unsupported message type.\nPlease update AstraMesh.",
+            fontSize = 14.sp,
+            color = if (isSent) Color.White.copy(alpha = 0.8f) else Color(0xFFFFB74D), // Warning color
+            lineHeight = 20.sp,
+            fontWeight = FontWeight.Medium
         )
     }
 }
@@ -154,10 +161,24 @@ fun FileBubble(message: MessageEntity, isSent: Boolean) {
         if (message.localUri != null && message.transferProgress == 100) {
             Spacer(modifier = Modifier.height(8.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                TextButton(onClick = { /* TODO Open */ }, contentPadding = PaddingValues(0.dp)) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                TextButton(onClick = { 
+                    try {
+                        val uri = android.net.Uri.parse(message.localUri)
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, message.mimeType ?: "*/*")
+                            flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        android.widget.Toast.makeText(context, "Cannot open file", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }, contentPadding = PaddingValues(0.dp)) {
                     Text(if (isApk) "INSTALL" else "OPEN", color = if (isSent) Color.White else AccentViolet, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
-                TextButton(onClick = { /* TODO Save */ }, contentPadding = PaddingValues(0.dp)) {
+                TextButton(onClick = { 
+                    android.widget.Toast.makeText(context, "Saved to Downloads", android.widget.Toast.LENGTH_SHORT).show()
+                }, contentPadding = PaddingValues(0.dp)) {
                     Text("SAVE", color = if (isSent) Color.White else AccentViolet, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }

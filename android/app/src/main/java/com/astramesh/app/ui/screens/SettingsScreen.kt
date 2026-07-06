@@ -43,6 +43,11 @@ import java.io.File
 import java.net.URL
 import javax.net.ssl.HttpsURLConnection
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import com.astramesh.app.identity.backup.IdentityBackupManager
+import com.astramesh.app.identity.backup.IdentityRestoreManager
 import com.astramesh.app.data.SettingsManager
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -75,6 +80,74 @@ fun SettingsScreen(
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var isDownloadingUpdate by remember { mutableStateOf(false) }
+
+    // Backup States
+    var showExportDialog by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
+    var backupPassword by remember { mutableStateOf("") }
+    var backupError by remember { mutableStateOf<String?>(null) }
+    var isBackupWorking by remember { mutableStateOf(false) }
+
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) {
+            isBackupWorking = true
+            backupError = null
+            scope.launch {
+                try {
+                    val manager = IdentityBackupManager(context)
+                    val outputStream = context.contentResolver.openOutputStream(uri)
+                    if (outputStream != null) {
+                        val result = manager.exportBackup(outputStream, backupPassword.toCharArray())
+                        withContext(Dispatchers.Main) {
+                            if (result.isSuccess) {
+                                showExportDialog = false
+                                android.widget.Toast.makeText(context, "Backup exported successfully", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                backupError = result.exceptionOrNull()?.message ?: "Unknown error"
+                            }
+                        }
+                    } else {
+                        backupError = "Could not create file."
+                    }
+                } catch (e: Exception) {
+                    backupError = "Error: ${e.message}"
+                } finally {
+                    isBackupWorking = false
+                }
+            }
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            isBackupWorking = true
+            backupError = null
+            scope.launch {
+                try {
+                    val manager = IdentityRestoreManager(context)
+                    val inputStream = context.contentResolver.openInputStream(uri)
+                    if (inputStream != null) {
+                        val result = manager.restoreBackup(inputStream, backupPassword.toCharArray())
+                        withContext(Dispatchers.Main) {
+                            if (result.isSuccess) {
+                                showImportDialog = false
+                                identity = identityManager.loadIdentity()
+                                android.widget.Toast.makeText(context, "Identity restored successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                backupError = result.exceptionOrNull()?.message ?: "Unknown error"
+                            }
+                        }
+                    } else {
+                        backupError = "Could not open file."
+                    }
+                } catch (e: Exception) {
+                    backupError = "Error: ${e.message}"
+                } finally {
+                    isBackupWorking = false
+                }
+            }
+        }
+    }
 
     // State for Storage
     var cacheSize by remember { mutableStateOf("Calculating...") }
@@ -294,6 +367,26 @@ fun SettingsScreen(
 
             item { Divider(color = CardSurface, modifier = Modifier.padding(vertical = 8.dp)) }
 
+            // Group: Identity Management
+            item {
+                SettingsItem(
+                    icon = Icons.Rounded.VpnKey,
+                    title = "Export Identity Backup",
+                    subtitle = "Save a secure copy of your identity",
+                    onClick = { showExportDialog = true; backupPassword = ""; backupError = null }
+                )
+            }
+            item {
+                SettingsItem(
+                    icon = Icons.Rounded.Restore,
+                    title = "Restore Identity Backup",
+                    subtitle = "Recover an identity from a backup file",
+                    onClick = { showImportDialog = true; backupPassword = ""; backupError = null }
+                )
+            }
+
+            item { Divider(color = CardSurface, modifier = Modifier.padding(vertical = 8.dp)) }
+
             // Group: Data
             item {
                 SettingsItem(
@@ -484,6 +577,104 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = { showPrivacyDialog = false }) {
                     Text("Close", color = AccentCyan)
+                }
+            }
+        )
+    }
+
+    if (showExportDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isBackupWorking) showExportDialog = false },
+            containerColor = CardSurface,
+            title = { Text("Export Identity", color = SoftWhite) },
+            text = {
+                Column {
+                    Text("Secure your backup with a strong password. You will need it to restore this identity.", color = MutedGray)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = backupPassword,
+                        onValueChange = { backupPassword = it },
+                        label = { Text("Backup Password", color = MutedGray) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        enabled = !isBackupWorking,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AccentCyan,
+                            unfocusedBorderColor = DimGray,
+                            focusedTextColor = SoftWhite,
+                            unfocusedTextColor = SoftWhite
+                        )
+                    )
+                    if (backupError != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(backupError!!, color = Color.Red, fontSize = 12.sp)
+                    }
+                    if (isBackupWorking) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        CircularProgressIndicator(color = AccentCyan, modifier = Modifier.align(Alignment.CenterHorizontally))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { exportLauncher.launch("AstraMesh_Backup_${System.currentTimeMillis()}.astramesh-backup") },
+                    enabled = backupPassword.length >= 4 && !isBackupWorking
+                ) {
+                    Text("Export", color = AccentCyan)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExportDialog = false }, enabled = !isBackupWorking) {
+                    Text("Cancel", color = MutedGray)
+                }
+            }
+        )
+    }
+
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isBackupWorking) showImportDialog = false },
+            containerColor = CardSurface,
+            title = { Text("Restore Identity", color = SoftWhite) },
+            text = {
+                Column {
+                    Text("Enter the password used to encrypt the backup.", color = MutedGray)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = backupPassword,
+                        onValueChange = { backupPassword = it },
+                        label = { Text("Backup Password", color = MutedGray) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        enabled = !isBackupWorking,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AccentCyan,
+                            unfocusedBorderColor = DimGray,
+                            focusedTextColor = SoftWhite,
+                            unfocusedTextColor = SoftWhite
+                        )
+                    )
+                    if (backupError != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(backupError!!, color = Color.Red, fontSize = 12.sp)
+                    }
+                    if (isBackupWorking) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        CircularProgressIndicator(color = AccentCyan, modifier = Modifier.align(Alignment.CenterHorizontally))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { importLauncher.launch(arrayOf("*/*")) },
+                    enabled = backupPassword.isNotEmpty() && !isBackupWorking
+                ) {
+                    Text("Select File", color = AccentCyan)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportDialog = false }, enabled = !isBackupWorking) {
+                    Text("Cancel", color = MutedGray)
                 }
             }
         )

@@ -22,8 +22,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.astramesh.app.crypto.CryptoManager
 import com.astramesh.app.identity.IdentityManager
+import com.astramesh.app.identity.backup.IdentityRestoreManager
 import com.astramesh.app.ui.theme.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 
@@ -332,6 +339,96 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
             Text(
                 "Create Identity",
                 style = MaterialTheme.typography.labelLarge
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        val context = LocalContext.current
+        val coroutineScope = rememberCoroutineScope()
+        var showRestoreDialog by remember { mutableStateOf(false) }
+        var restorePassword by remember { mutableStateOf("") }
+        var restoreError by remember { mutableStateOf<String?>(null) }
+        var isRestoring by remember { mutableStateOf(false) }
+
+        val filePickerLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocument()
+        ) { uri: Uri? ->
+            if (uri != null) {
+                isRestoring = true
+                restoreError = null
+                coroutineScope.launch {
+                    try {
+                        val restoreManager = IdentityRestoreManager(context)
+                        val inputStream = context.contentResolver.openInputStream(uri)
+                        if (inputStream != null) {
+                            val result = restoreManager.restoreBackup(inputStream, restorePassword.toCharArray())
+                            if (result.isSuccess) {
+                                withContext(Dispatchers.Main) {
+                                    showRestoreDialog = false
+                                    onIdentityCreated()
+                                }
+                            } else {
+                                restoreError = result.exceptionOrNull()?.message ?: "Unknown error"
+                            }
+                        } else {
+                            restoreError = "Could not read file."
+                        }
+                    } catch (e: Exception) {
+                        restoreError = "Error: ${e.message}"
+                    } finally {
+                        isRestoring = false
+                    }
+                }
+            }
+        }
+
+        TextButton(onClick = { showRestoreDialog = true }) {
+            Text("Restore Existing Identity", color = MaterialTheme.colorScheme.primary, fontSize = 16.sp)
+        }
+
+        if (showRestoreDialog) {
+            AlertDialog(
+                onDismissRequest = { if (!isRestoring) showRestoreDialog = false },
+                title = { Text("Restore Identity") },
+                text = {
+                    Column {
+                        Text("Enter the password used to encrypt the backup:")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = restorePassword,
+                            onValueChange = { restorePassword = it },
+                            label = { Text("Backup Password") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true,
+                            enabled = !isRestoring
+                        )
+                        if (restoreError != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(restoreError!!, color = Color.Red, fontSize = 12.sp)
+                        }
+                        if (isRestoring) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                        enabled = restorePassword.isNotEmpty() && !isRestoring
+                    ) {
+                        Text("Select Backup File")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showRestoreDialog = false },
+                        enabled = !isRestoring
+                    ) {
+                        Text("Cancel")
+                    }
+                }
             )
         }
     }

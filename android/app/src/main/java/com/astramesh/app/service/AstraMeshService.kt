@@ -96,8 +96,14 @@ class AstraMeshService : Service() {
             AppDatabase::class.java,
             "astra-mesh-db"
         )
-            .addMigrations(AppDatabase.MIGRATION_5_6)
-            .fallbackToDestructiveMigration()
+            .addMigrations(
+                AppDatabase.MIGRATION_1_2,
+                AppDatabase.MIGRATION_2_3,
+                AppDatabase.MIGRATION_3_4,
+                AppDatabase.MIGRATION_4_5,
+                AppDatabase.MIGRATION_5_6,
+                AppDatabase.MIGRATION_6_7
+            )
             .build()
 
         nearbyManager = NearbyConnectionManager(this)
@@ -141,6 +147,29 @@ class AstraMeshService : Service() {
 
         Log.d(TAG, "[START] Networking started for ${identity.name}")
         updateNotification("Connected as ${identity.name}", "Mesh + Tor active")
+    }
+
+    /**
+     * Safely stops and restarts all networking components.
+     * Used primarily when restoring a new identity from a backup without requiring an app restart.
+     */
+    fun restartNetworking() {
+        Log.d(TAG, "[RESTART] Restarting all networking services...")
+        serviceScope.launch {
+            // Stop existing Tor
+            torManager.stop()
+            
+            // Stop Nearby
+            nearbyManager.stopAll()
+            
+            // Give services a moment to cleanly shutdown
+            delay(1000)
+            
+            // Re-configure and start
+            withContext(Dispatchers.Main) {
+                configureAndStart()
+            }
+        }
     }
 
     private fun wireNetworking() {

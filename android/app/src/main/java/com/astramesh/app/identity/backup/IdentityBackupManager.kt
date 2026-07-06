@@ -1,0 +1,65 @@
+package com.astramesh.app.identity.backup
+
+import android.content.Context
+import android.util.Base64
+import com.astramesh.app.crypto.CryptoManager
+import com.astramesh.app.identity.IdentityManager
+import com.astramesh.app.network.TorManager
+import com.google.gson.Gson
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.OutputStream
+
+class IdentityBackupManager(private val context: Context) {
+    private val identityManager = IdentityManager(context)
+    private val torManager = TorManager(context)
+    private val gson = Gson()
+
+    suspend fun exportBackup(outputStream: OutputStream, password: CharArray): Result<Unit> = withContext(Dispatchers.Default) {
+        try {
+            val identity = identityManager.loadIdentity() 
+                ?: return@withContext Result.failure(Exception("No identity found to export."))
+            val onionAddress = identityManager.loadOnionAddress()
+
+            if (onionAddress.isNullOrBlank()) {
+                return@withContext Result.failure(Exception("Onion address not generated yet."))
+            }
+
+            // Export keys directly from TorManager
+            val torKeys = try {
+                torManager.exportHiddenServiceKeys()
+            } catch (e: Exception) {
+                return@withContext Result.failure(Exception("Tor keys are missing. Ensure Tor has run at least once."))
+            }
+
+            val backupDto = IdentityBackupDto(
+                backupVersion = 1,
+                appVersion = "1.0.6",
+                schemaVersion = 1,
+                createdAt = java.time.Instant.now().toString(),
+                identityVersion = 1,
+                identityName = identity.name,
+                creationTimestamp = System.currentTimeMillis(),
+                encPubHex = CryptoManager.toHex(identity.encryptionPublicKey),
+                encSecHex = CryptoManager.toHex(identity.encryptionSecretKey),
+                sigPubHex = CryptoManager.toHex(identity.signingPublicKey),
+                sigSecHex = CryptoManager.toHex(identity.signingSecretKey),
+                onionAddress = onionAddress,
+                torHsEd25519PublicKeyB64 = torKeys.pubKeyB64,
+                torHsEd25519SecretKeyB64 = torKeys.secKeyB64
+            )
+
+            val jsonPayload = gson.toJson(backupDto).toByteArray(Charsets.UTF_8)
+            val encryptedPayload = BackupCrypto.encryptBackup(jsonPayload, password)
+
+            outputStream.use { out ->
+                out.write(encryptedPayload)
+                out.flush()
+            }
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+}
