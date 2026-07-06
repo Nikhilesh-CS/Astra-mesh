@@ -96,7 +96,10 @@ fun SettingsScreen(
             backupError = null
             scope.launch {
                 try {
-                    val manager = IdentityBackupManager(context)
+                    val profileCacheManager = com.astramesh.app.identity.profile.ProfileCacheManagerImpl(context)
+                    val imageProcessor = com.astramesh.app.media.ImageProcessor(context)
+                    val profileRepository = com.astramesh.app.identity.profile.ProfileRepositoryImpl(db.profileDao(), identityManager, profileCacheManager, imageProcessor)
+                    val manager = IdentityBackupManager(context, profileRepository, profileCacheManager)
                     val outputStream = context.contentResolver.openOutputStream(uri)
                     if (outputStream != null) {
                         val result = manager.exportBackup(outputStream, backupPassword.toCharArray())
