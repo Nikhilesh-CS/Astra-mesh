@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -40,11 +41,11 @@ fun DebugScreen(
     navController: NavController,
     torManager: TorManager
 ) {
-    val torState by torManager.torState.collectAsState()
-    val onionAddress by torManager.onionAddress.collectAsState()
-    val torLogs by torManager.torLogs.collectAsState()
-    val lastError by torManager.lastError.collectAsState()
-    val lastPing by torManager.lastPing.collectAsState()
+    val torState by torManager.torState.collectAsStateWithLifecycle()
+    val onionAddress by torManager.onionAddress.collectAsStateWithLifecycle()
+    val torLogs by torManager.torLogs.collectAsStateWithLifecycle()
+    val lastError by torManager.lastError.collectAsStateWithLifecycle()
+    val lastPing by torManager.lastPing.collectAsStateWithLifecycle()
 
     var testOnion by remember { mutableStateOf("") }
     var testResult by remember { mutableStateOf<String?>(null) }
@@ -228,3 +229,4 @@ fun DebugScreen(
         }
     }
 }
+

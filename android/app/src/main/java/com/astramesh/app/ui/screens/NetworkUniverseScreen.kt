@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -51,9 +52,9 @@ fun NetworkUniverseScreen(
     )
 
     // Using collected states for dynamic nodes
-    val nearbyPeers by nearbyManager.connectedEndpoints.collectAsState()
-    val activeOnionConnections by torManager.activeConnections.collectAsState(initial = emptyList())
-    val torReady by torManager.isTorReady.collectAsState()
+    val nearbyPeers by nearbyManager.connectedEndpoints.collectAsStateWithLifecycle()
+    val activeOnionConnections by torManager.activeConnections.collectAsStateWithLifecycle(initial = emptyList())
+    val torReady by torManager.isTorReady.collectAsStateWithLifecycle()
 
     // Use exact numbers, no maxOf mocks
     val visualBluetoothNodes = nearbyPeers.size // For simplicity, we treat nearby as a mix
@@ -180,3 +181,4 @@ fun NetworkUniverseScreen(
         }
     }
 }
+

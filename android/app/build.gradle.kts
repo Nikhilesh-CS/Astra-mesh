@@ -77,6 +77,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:2.7.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
 
     // Crypto
     implementation("com.goterl:lazysodium-android:5.1.0@aar")
@@ -130,4 +131,8 @@ dependencies {
     
     // Room Testing
     androidTestImplementation("androidx.room:room-testing:2.6.1")
+}
+
+kapt {
+    correctErrorTypes = true
 }

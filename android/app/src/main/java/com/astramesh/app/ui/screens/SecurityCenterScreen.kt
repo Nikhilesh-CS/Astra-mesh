@@ -40,9 +40,9 @@ fun SecurityCenterScreen(
     torManager: TorManager
 ) {
     val context = LocalContext.current
-    val torReady by torManager.isTorReady.collectAsState()
-    val torStatus by torManager.torStatus.collectAsState()
-    val onionAddress by torManager.onionAddress.collectAsState()
+    val torReady by torManager.isTorReady.collectAsStateWithLifecycle()
+    val torStatus by torManager.torStatus.collectAsStateWithLifecycle()
+    val onionAddress by torManager.onionAddress.collectAsStateWithLifecycle()
     val identity = identityManager.loadIdentity()
     val identityKey = identity?.signingPublicKey?.let { CryptoManager.toHex(it) } ?: "Unknown"
 
@@ -156,3 +156,4 @@ fun SecurityCard(
         }
     }
 }
+

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,11 +66,11 @@ fun SettingsScreen(
     var identity by remember { mutableStateOf(identityManager.loadIdentity()) }
     val scope = rememberCoroutineScope()
 
-    val torModeEnabled by settingsManager.torEnabledFlow.collectAsState(initial = true)
-    val hideOnlineStatus by settingsManager.hideOnlineStatusFlow.collectAsState(initial = false)
-    val reduceMotion by settingsManager.reduceMotionFlow.collectAsState(initial = false)
-    val showTransportIcons by settingsManager.showTransportIconsFlow.collectAsState(initial = true)
-    val darkMode by settingsManager.darkModeFlow.collectAsState(initial = true)
+    val torModeEnabled by settingsManager.torEnabledFlow.collectAsStateWithLifecycle(initial = true)
+    val hideOnlineStatus by settingsManager.hideOnlineStatusFlow.collectAsStateWithLifecycle(initial = false)
+    val reduceMotion by settingsManager.reduceMotionFlow.collectAsStateWithLifecycle(initial = false)
+    val showTransportIcons by settingsManager.showTransportIconsFlow.collectAsStateWithLifecycle(initial = true)
+    val darkMode by settingsManager.darkModeFlow.collectAsStateWithLifecycle(initial = true)
     
     // Dialog States
     var showEditProfileDialog by remember { mutableStateOf(false) }
@@ -763,3 +764,4 @@ fun SettingsSwitchItem(
         )
     }
 }
+

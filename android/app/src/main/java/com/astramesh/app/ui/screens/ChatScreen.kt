@@ -21,6 +21,7 @@ import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,16 +63,16 @@ fun ChatScreen(
     // Instantiate ViewModel at Compose level for simplicity. Normally we'd use ViewModelProvider.
     val viewModel = remember(contactKey) { ChatViewModel(contactKey, db, messageRouter) }
     
-    val contactName by viewModel.contactName.collectAsState()
-    val contactEndpoint by viewModel.contactEndpoint.collectAsState()
-    val contactOnion by viewModel.contactOnion.collectAsState()
+    val contactName by viewModel.contactName.collectAsStateWithLifecycle()
+    val contactEndpoint by viewModel.contactEndpoint.collectAsStateWithLifecycle()
+    val contactOnion by viewModel.contactOnion.collectAsStateWithLifecycle()
     
-    val connectedEndpoints by nearbyManager.connectedEndpoints.collectAsState()
+    val connectedEndpoints by nearbyManager.connectedEndpoints.collectAsStateWithLifecycle()
     val isNearbyOnline = connectedEndpoints.contains(contactEndpoint)
     val isOnline = isNearbyOnline || contactOnion.isNotBlank()
     
-    val messages by viewModel.conversationEngine.messages.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
+    val messages by viewModel.conversationEngine.messages.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     
     val listState = rememberLazyListState()
     val smartScrollEngine = remember(listState) { SmartScrollEngine(listState, coroutineScope) }
@@ -79,12 +80,14 @@ fun ChatScreen(
     var messageText by remember { mutableStateOf("") }
     var replyToMessage by remember { mutableStateOf<MessagePayload?>(null) }
     var selectedMessages by remember { mutableStateOf(setOf<String>()) }
+    var showMessageInfoFor by remember { mutableStateOf<MessagePayload?>(null) }
+    var showConnectionVisualizer by remember { mutableStateOf(false) }
     val inSelectionMode = selectedMessages.isNotEmpty()
     
     var inSearchMode by remember { mutableStateOf(false) }
-    val searchQuery by viewModel.searchEngine.searchQuery.collectAsState()
-    val searchResults by viewModel.searchEngine.searchResults.collectAsState()
-    val currentResultIndex by viewModel.searchEngine.currentResultIndex.collectAsState()
+    val searchQuery by viewModel.searchEngine.searchQuery.collectAsStateWithLifecycle()
+    val searchResults by viewModel.searchEngine.searchResults.collectAsStateWithLifecycle()
+    val currentResultIndex by viewModel.searchEngine.currentResultIndex.collectAsStateWithLifecycle()
     
     // Jump to search result
     LaunchedEffect(currentResultIndex) {
@@ -128,13 +131,9 @@ fun ChatScreen(
             androidx.compose.animation.Crossfade(targetState = if (inSelectionMode) 2 else if (inSearchMode) 1 else 0) { mode ->
                 when (mode) {
                     2 -> {
-                        com.astramesh.app.ui.adaptive.AstraTopAppBar(
-                            title = { Text("${selectedMessages.size}") },
-                            onNavigationIconClick = { selectedMessages = emptySet() },
-                            navigationIcon = {
-                                Icon(Icons.Rounded.Close, "Clear Selection")
-                            },
-                            actions = {
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("${selectedMessages.size} Selected", style = AstraTheme.typography.titleMedium, modifier = Modifier.weight(1f).padding(start = AstraTheme.spacing.small))
+                            Row {
                                 IconButton(onClick = { 
                                     val textToCopy = selectedMessages.mapNotNull { id -> messages.find { it.id == id }?.text }.joinToString("\n")
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -142,7 +141,7 @@ fun ChatScreen(
                                     Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
                                     selectedMessages = emptySet()
                                 }) {
-                                    Icon(Icons.Rounded.ContentCopy, "Copy")
+                                    Icon(androidx.compose.material.icons.Icons.Rounded.ContentCopy, "Copy")
                                 }
                                 if (selectedMessages.size == 1) {
                                     IconButton(onClick = { 
@@ -154,21 +153,20 @@ fun ChatScreen(
                                         replyToMessage = messages.find { it.id == selectedMessages.first() }
                                         selectedMessages = emptySet()
                                     }) {
-                                        Icon(Icons.AutoMirrored.Rounded.Reply, "Reply")
+                                        Icon(androidx.compose.material.icons.Icons.AutoMirrored.Rounded.Reply, "Reply")
                                     }
                                 }
                                 IconButton(onClick = { 
                                     selectedMessages.forEach { id ->
                                         viewModel.conversationEngine.updateMessageState(id, com.astramesh.app.engine.MessageLifecycleState.CANCELLED)
-                                        // Note: Actually delete from DB could go here if desired.
                                     }
                                     selectedMessages = emptySet()
                                     Toast.makeText(context, "Deleted", Toast.LENGTH_SHORT).show()
                                 }) {
-                                    Icon(Icons.Rounded.Delete, "Delete")
+                                    Icon(androidx.compose.material.icons.Icons.Rounded.Delete, "Delete")
                                 }
                             }
-                        )
+                        }
                     }
                     1 -> {
                         // Search Mode
@@ -449,15 +447,12 @@ fun ChatScreen(
     }
     
     // Bottom Sheets
-    var showMessageInfoFor by remember { mutableStateOf<MessagePayload?>(null) }
     if (showMessageInfoFor != null) {
         com.astramesh.app.ui.components.MessageInfoSheet(
             message = showMessageInfoFor!!,
             onDismiss = { showMessageInfoFor = null }
         )
     }
-    
-    var showConnectionVisualizer by remember { mutableStateOf(false) }
     if (showConnectionVisualizer) {
         com.astramesh.app.ui.components.ConnectionVisualizerSheet(
             transportType = when {
@@ -569,3 +564,4 @@ fun ReplyPreviewBanner(message: MessagePayload, onCancel: () -> Unit) {
         }
     }
 }
+

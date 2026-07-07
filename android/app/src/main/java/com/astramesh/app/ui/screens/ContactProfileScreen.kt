@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
@@ -236,5 +237,3 @@ fun ActionChip(
     }
 }
 
-// Alpha modifier extension
-fun Modifier.alpha(alpha: Float): Modifier = this.then(androidx.compose.ui.draw.alpha(alpha))

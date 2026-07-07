@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -92,7 +93,7 @@ fun MainScreen(
                 )
             }
             composable("settings") {
-                val onionAddress by torManager.onionAddress.collectAsState()
+                val onionAddress by torManager.onionAddress.collectAsStateWithLifecycle()
                 SettingsScreen(
                     identityManager = identityManager,
                     navController = rootNavController,
@@ -149,3 +150,4 @@ fun AstraBottomNavigation(
 }
 
 data class NavRoute(val route: String, val icon: String, val label: String)
+

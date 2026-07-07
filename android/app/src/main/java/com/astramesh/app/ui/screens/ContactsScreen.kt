@@ -37,9 +37,9 @@ fun ContactsScreen(
     nearbyManager: NearbyConnectionManager,
     torManager: TorManager
 ) {
-    val contacts by db.contactDao().getAllContacts().collectAsState(initial = emptyList())
-    val connectedEndpoints by nearbyManager.connectedEndpoints.collectAsState()
-    val isTorReady by torManager.isTorReady.collectAsState()
+    val contacts by db.contactDao().getAllContacts().collectAsStateWithLifecycle(initial = emptyList())
+    val connectedEndpoints by nearbyManager.connectedEndpoints.collectAsStateWithLifecycle()
+    val isTorReady by torManager.isTorReady.collectAsStateWithLifecycle()
 
     Scaffold(
         containerColor = DeepBlack,
@@ -165,3 +165,4 @@ fun ContactItemRow(
         }
     }
 }
+

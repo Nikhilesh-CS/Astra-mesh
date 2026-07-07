@@ -26,13 +26,13 @@ fun DiagnosticsDialog(
     nearbyManager: NearbyConnectionManager,
     onDismiss: () -> Unit
 ) {
-    val torState by torManager.torState.collectAsState()
-    val torStatus by torManager.torStatus.collectAsState()
-    val onionAddress by torManager.onionAddress.collectAsState()
-    val isTorReady by torManager.isTorReady.collectAsState()
+    val torState by torManager.torState.collectAsStateWithLifecycle()
+    val torStatus by torManager.torStatus.collectAsStateWithLifecycle()
+    val onionAddress by torManager.onionAddress.collectAsStateWithLifecycle()
+    val isTorReady by torManager.isTorReady.collectAsStateWithLifecycle()
     
-    val connectedEndpoints by nearbyManager.connectedEndpoints.collectAsState()
-    val connectionStatus by nearbyManager.connectionStatus.collectAsState()
+    val connectedEndpoints by nearbyManager.connectedEndpoints.collectAsStateWithLifecycle()
+    val connectionStatus by nearbyManager.connectionStatus.collectAsStateWithLifecycle()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -105,3 +105,4 @@ fun DiagnosticsDialog(
         shape = RoundedCornerShape(AstraTheme.spacing.standard)
     )
 }
+
