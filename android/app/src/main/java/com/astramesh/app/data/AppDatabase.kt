@@ -68,6 +68,9 @@ interface ContactDao {
     @Query("SELECT * FROM contacts")
     fun getAllContacts(): Flow<List<ContactEntity>>
 
+    @Query("SELECT * FROM contacts")
+    fun getAllContactsSync(): List<ContactEntity>
+
     @Query("SELECT * FROM contacts WHERE signingPublicKey = :signingPublicKey LIMIT 1")
     fun getContact(signingPublicKey: String): ContactEntity?
 

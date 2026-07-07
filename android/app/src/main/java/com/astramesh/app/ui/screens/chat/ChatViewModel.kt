@@ -57,7 +57,7 @@ class ChatViewModel(
                 db.messageDao().getMessagesForContact(contactKey, limit)
             }.collect { entities ->
                 _isLoading.value = false
-                entities.forEach { entity ->
+                val payloads = entities.map { entity ->
                     val transport = when (entity.transport) {
                         "NEARBY" -> TransportType.BLUETOOTH
                         "TOR" -> TransportType.TOR
@@ -85,7 +85,7 @@ class ChatViewModel(
                         emptyMap<String, String>()
                     }
 
-                    val payload = MessagePayload(
+                    MessagePayload(
                         id = entity.messageId,
                         senderId = if (entity.direction == "sent") "me" else contactKey,
                         receiverId = if (entity.direction == "sent") contactKey else "me",
@@ -94,6 +94,7 @@ class ChatViewModel(
                         lifecycleState = lifecycle,
                         transportType = transport,
                         replyToId = entity.replyToId,
+                        replyToText = entity.replyToText,
                         hasAttachments = entity.messageType != "TEXT",
                         messageType = entity.messageType,
                         fileName = entity.fileName,
@@ -104,8 +105,10 @@ class ChatViewModel(
                         transferProgress = entity.transferProgress,
                         reactions = reactionsMap
                     )
-                    conversationEngine.ingestMessage(payload)
+                }
+                conversationEngine.replaceMessages(payloads)
 
+                entities.forEach { entity ->
                     // Auto-read
                     if (entity.direction == "received" && entity.status != "read") {
                         db.messageDao().updateMessageStatus(entity.messageId, "read")
@@ -122,8 +125,18 @@ class ChatViewModel(
 
     fun sendMessage(text: String, replyToId: String? = null) {
         viewModelScope.launch {
-            val result = messageRouter.sendMessage(contactKey, text)
+            val replyToText = replyToId?.let { id ->
+                conversationEngine.messages.value.firstOrNull { it.id == id }?.text
+            }
+            val result = messageRouter.sendMessage(contactKey, text, replyToId, replyToText)
             // The DB observation will pick up the new message and feed it to conversationEngine
+        }
+    }
+
+    fun deleteMessages(messageIds: Set<String>) {
+        if (messageIds.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            messageIds.forEach { db.messageDao().deleteMessage(it) }
         }
     }
 }

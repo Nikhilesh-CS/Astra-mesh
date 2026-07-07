@@ -36,6 +36,7 @@ data class MessagePayload(
     val isEncrypted: Boolean = true,
     val retryCount: Int = 0,
     val replyToId: String? = null,
+    val replyToText: String? = null,
     val hasAttachments: Boolean = false,
     val messageType: String = "TEXT",
     val fileName: String? = null,
@@ -88,6 +89,22 @@ class ConversationEngine {
             MessageLifecycleState.FAILED -> failedQueue.add(payload)
             else -> {} // Active or terminal state
         }
+    }
+
+    fun replaceMessages(payloads: List<MessagePayload>) {
+        messageMap.clear()
+        pendingQueue.clear()
+        failedQueue.clear()
+
+        payloads.forEach { payload ->
+            messageMap[payload.id] = payload
+            when (payload.lifecycleState) {
+                MessageLifecycleState.QUEUED -> pendingQueue.add(payload)
+                MessageLifecycleState.FAILED -> failedQueue.add(payload)
+                else -> {}
+            }
+        }
+        _messages.value = messageMap.values.sortedBy { it.timestamp }
     }
 
     fun updateMessageState(messageId: String, newState: MessageLifecycleState, newTransport: TransportType? = null) {

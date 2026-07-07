@@ -21,14 +21,25 @@
 #-renamesourcefileattribute SourceFile
 
 # Preserve JNA for Tor
+-dontwarn java.awt.Component
+-dontwarn java.awt.GraphicsEnvironment
+-dontwarn java.awt.HeadlessException
+-dontwarn java.awt.Window
 -keep class com.sun.jna.** { *; }
 -keepclassmembers class * extends com.sun.jna.Structure {
     public <fields>;
     public <methods>;
 }
+-keep class com.goterl.lazysodium.** { *; }
 
 # Preserve Room models
 -keep class com.astramesh.app.data.** { *; }
 
 # Preserve Tor classes
 -keep class info.guardianproject.tor.** { *; }
+
+# Tink references these compile-time annotations, but they are not needed at runtime.
+-dontwarn com.google.errorprone.annotations.CanIgnoreReturnValue
+-dontwarn com.google.errorprone.annotations.CheckReturnValue
+-dontwarn com.google.errorprone.annotations.Immutable
+-dontwarn com.google.errorprone.annotations.RestrictedApi

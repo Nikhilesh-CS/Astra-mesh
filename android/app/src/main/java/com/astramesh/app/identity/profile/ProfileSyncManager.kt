@@ -77,7 +77,7 @@ class ProfileSyncManager(
         if (requestedHash.isBlank()) return
 
         val myProfile = profileRepository.getLocalProfile().firstOrNull()
-        if (myProfile?.avatarHash == requestedHash && myProfile.avatarLocalPath != null) {
+        if (myProfile != null && myProfile.avatarHash == requestedHash && myProfile.avatarLocalPath != null) {
             // Read file and send it
             try {
                 val file = java.io.File(myProfile.avatarLocalPath)

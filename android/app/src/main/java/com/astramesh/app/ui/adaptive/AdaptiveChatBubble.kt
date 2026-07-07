@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.astramesh.app.engine.MessageLifecycleState
@@ -72,7 +73,7 @@ fun AdaptiveChatBubble(
             Column(
                 modifier = Modifier
                     .widthIn(max = maxWidth * widthFraction)
-                    .androidx.compose.ui.draw.shadow(
+                    .shadow(
                         elevation = 2.dp,
                         shape = bubbleShape,
                         spotColor = Color.Black.copy(alpha = 0.1f)

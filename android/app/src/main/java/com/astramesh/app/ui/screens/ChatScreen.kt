@@ -3,7 +3,10 @@ package com.astramesh.app.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -17,8 +20,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.AttachFile
-import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -59,36 +63,65 @@ fun ChatScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    
+
     // Instantiate ViewModel at Compose level for simplicity. Normally we'd use ViewModelProvider.
     val viewModel = remember(contactKey) { ChatViewModel(contactKey, db, messageRouter) }
-    
+
     val contactName by viewModel.contactName.collectAsStateWithLifecycle()
     val contactEndpoint by viewModel.contactEndpoint.collectAsStateWithLifecycle()
     val contactOnion by viewModel.contactOnion.collectAsStateWithLifecycle()
-    
+
     val connectedEndpoints by nearbyManager.connectedEndpoints.collectAsStateWithLifecycle()
     val isNearbyOnline = connectedEndpoints.contains(contactEndpoint)
     val isOnline = isNearbyOnline || contactOnion.isNotBlank()
-    
+
     val messages by viewModel.conversationEngine.messages.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
-    
+
     val listState = rememberLazyListState()
     val smartScrollEngine = remember(listState) { SmartScrollEngine(listState, coroutineScope) }
-    
+
     var messageText by remember { mutableStateOf("") }
     var replyToMessage by remember { mutableStateOf<MessagePayload?>(null) }
     var selectedMessages by remember { mutableStateOf(setOf<String>()) }
     var showMessageInfoFor by remember { mutableStateOf<MessagePayload?>(null) }
     var showConnectionVisualizer by remember { mutableStateOf(false) }
     val inSelectionMode = selectedMessages.isNotEmpty()
-    
+
+    val attachmentPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+
+        val mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream"
+        val messageType = when {
+            mimeType.startsWith("image/") -> "IMAGE"
+            mimeType.startsWith("video/") -> "VIDEO"
+            mimeType.startsWith("audio/") -> "AUDIO"
+            mimeType == "application/vnd.android.package-archive" -> "APK"
+            else -> "DOCUMENT"
+        }
+
+        coroutineScope.launch {
+            val queuedId = mediaTransferManager.queueMediaTransfer(
+                contactKey = contactKey,
+                fileUri = uri,
+                mimeType = mimeType,
+                messageType = messageType
+            )
+            Toast.makeText(
+                context,
+                if (queuedId != null) "Attachment queued" else "Could not attach file",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
     var inSearchMode by remember { mutableStateOf(false) }
     val searchQuery by viewModel.searchEngine.searchQuery.collectAsStateWithLifecycle()
     val searchResults by viewModel.searchEngine.searchResults.collectAsStateWithLifecycle()
     val currentResultIndex by viewModel.searchEngine.currentResultIndex.collectAsStateWithLifecycle()
-    
+
     // Jump to search result
     LaunchedEffect(currentResultIndex) {
         if (currentResultIndex >= 0 && searchResults.isNotEmpty()) {
@@ -99,7 +132,7 @@ fun ChatScreen(
             }
         }
     }
-    
+
     // Scroll handling when new messages arrive
     LaunchedEffect(messages.size) {
         val lastMessage = messages.lastOrNull()
@@ -118,12 +151,12 @@ fun ChatScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = AstraTheme.spacing.small, vertical = AstraTheme.spacing.medium),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { 
+                    IconButton(onClick = {
                         if (inSearchMode) {
                             inSearchMode = false
                             viewModel.searchEngine.clearSearch()
                         } else {
-                            navController.popBackStack() 
+                            navController.popBackStack()
                         }
                     }) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = AstraTheme.colors.onSurface)
@@ -134,36 +167,34 @@ fun ChatScreen(
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("${selectedMessages.size} Selected", style = AstraTheme.typography.titleMedium, modifier = Modifier.weight(1f).padding(start = AstraTheme.spacing.small))
                             Row {
-                                IconButton(onClick = { 
+                                IconButton(onClick = {
                                     val textToCopy = selectedMessages.mapNotNull { id -> messages.find { it.id == id }?.text }.joinToString("\n")
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     clipboard.setPrimaryClip(ClipData.newPlainText("AstraMesh Messages", textToCopy))
                                     Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
                                     selectedMessages = emptySet()
                                 }) {
-                                    Icon(androidx.compose.material.icons.Icons.Rounded.ContentCopy, "Copy")
+                                    Icon(Icons.Rounded.ContentCopy, "Copy")
                                 }
                                 if (selectedMessages.size == 1) {
-                                    IconButton(onClick = { 
+                                    IconButton(onClick = {
                                         showMessageInfoFor = messages.find { it.id == selectedMessages.first() }
                                     }) {
-                                        Icon(androidx.compose.material.icons.Icons.Rounded.Info, "Info")
+                                        Icon(Icons.Rounded.Info, "Info")
                                     }
-                                    IconButton(onClick = { 
+                                    IconButton(onClick = {
                                         replyToMessage = messages.find { it.id == selectedMessages.first() }
                                         selectedMessages = emptySet()
                                     }) {
-                                        Icon(androidx.compose.material.icons.Icons.AutoMirrored.Rounded.Reply, "Reply")
+                                        Icon(Icons.AutoMirrored.Rounded.Reply, "Reply")
                                     }
                                 }
-                                IconButton(onClick = { 
-                                    selectedMessages.forEach { id ->
-                                        viewModel.conversationEngine.updateMessageState(id, com.astramesh.app.engine.MessageLifecycleState.CANCELLED)
-                                    }
+                                IconButton(onClick = {
+                                    viewModel.deleteMessages(selectedMessages)
                                     selectedMessages = emptySet()
                                     Toast.makeText(context, "Deleted", Toast.LENGTH_SHORT).show()
                                 }) {
-                                    Icon(androidx.compose.material.icons.Icons.Rounded.Delete, "Delete")
+                                    Icon(Icons.Rounded.Delete, "Delete")
                                 }
                             }
                         }
@@ -185,21 +216,20 @@ fun ChatScreen(
                             if (searchResults.isNotEmpty()) {
                                 Text("${currentResultIndex + 1}/${searchResults.size}", style = AstraTheme.typography.labelSmall)
                                 IconButton(onClick = { viewModel.searchEngine.previousResult() }) {
-                                    Icon(androidx.compose.material.icons.Icons.Rounded.KeyboardArrowUp, "Previous")
+                                    Icon(Icons.Default.KeyboardArrowUp, "Previous")
                                 }
                                 IconButton(onClick = { viewModel.searchEngine.nextResult() }) {
-                                    Icon(androidx.compose.material.icons.Icons.Rounded.KeyboardArrowDown, "Next")
+                                    Icon(Icons.Default.KeyboardArrowDown, "Next")
                                 }
                             }
                         }
                     }
                     0 -> {
-                        com.astramesh.app.ui.adaptive.AstraTopAppBar(
-                            title = { Text(contactName) },
-                            onNavigationIconClick = { navController.popBackStack() },
-                            actions = {
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(contactName, style = AstraTheme.typography.titleMedium, modifier = Modifier.weight(1f).padding(start = AstraTheme.spacing.small))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { inSearchMode = true }) {
-                                    Icon(androidx.compose.material.icons.Icons.Rounded.Search, "Search")
+                                    Icon(Icons.Rounded.Search, "Search")
                                 }
                                 ConnectionStatusPill(
                                     transportType = when {
@@ -211,7 +241,7 @@ fun ChatScreen(
                                     modifier = Modifier.clickable { showConnectionVisualizer = true }
                                 )
                             }
-                        )
+                        }
                     }
                 }
             }
@@ -235,12 +265,12 @@ fun ChatScreen(
                         verticalAlignment = Alignment.Bottom
                     ) {
                         IconButton(
-                            onClick = { /* TODO */ },
+                            onClick = { attachmentPicker.launch("*/*") },
                             modifier = Modifier.padding(bottom = AstraTheme.spacing.tiny)
                         ) {
                             Icon(Icons.Rounded.AttachFile, "Attach", tint = AstraTheme.colors.onSurfaceVariant)
                         }
-                        
+
                         OutlinedTextField(
                             value = messageText,
                             onValueChange = { messageText = it },
@@ -259,10 +289,10 @@ fun ChatScreen(
                             maxLines = 4
                         )
                         Spacer(modifier = Modifier.width(AstraTheme.spacing.small))
-                        
+
                         val isSendEnabled = messageText.isNotBlank()
                         val sendScale by animateFloatAsState(targetValue = if (isSendEnabled) 1f else 0.8f, label = "sendBtn")
-                        
+
                         IconButton(
                             onClick = {
                                 if (!isSendEnabled) return@IconButton
@@ -299,7 +329,7 @@ fun ChatScreen(
                 val reversedMessages = remember(messages) { messages.asReversed() }
                 val dateFormat = remember { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
                 var highlightedMessageId by remember { mutableStateOf<String?>(null) }
-                
+
                 LaunchedEffect(highlightedMessageId) {
                     if (highlightedMessageId != null) {
                         kotlinx.coroutines.delay(1000)
@@ -317,17 +347,17 @@ fun ChatScreen(
                         val message = reversedMessages[index]
                         val nextMessage = reversedMessages.getOrNull(index + 1)
                         val prevMessage = reversedMessages.getOrNull(index - 1)
-                        
+
                         val dateStr = dateFormat.format(Date(message.timestamp))
                         val nextDateStr = nextMessage?.let { dateFormat.format(Date(it.timestamp)) }
-                        
+
                         // Because reverseLayout = true, prevMessage is visually BELOW (newer in time)
                         // nextMessage is visually ABOVE (older in time)
                         // A tail should be shown if the message below is from a DIFFERENT sender, or there is no message below.
                         val showTail = prevMessage == null || prevMessage.senderId != message.senderId
-                        
+
                         val isSelected = selectedMessages.contains(message.id)
-                        
+
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -351,7 +381,7 @@ fun ChatScreen(
                                     }
                                 },
                                 onSwipeReply = { replyToMessage = message },
-                                onReplyClick = { replyId -> 
+                                onReplyClick = { replyId ->
                                     val targetIdx = reversedMessages.indexOfFirst { it.id == replyId }
                                     if (targetIdx != -1) {
                                         coroutineScope.launch {
@@ -362,7 +392,7 @@ fun ChatScreen(
                                 }
                             )
                         }
-                        
+
                         if (dateStr != nextDateStr) {
                             DateSeparator(dateStr)
                         }
@@ -391,7 +421,7 @@ fun ChatScreen(
                         contentColor = AstraTheme.colors.primary,
                         shape = CircleShape
                     ) {
-                        Icon(androidx.compose.material.icons.Icons.Rounded.KeyboardArrowDown, "Jump to bottom")
+                        Icon(Icons.Default.KeyboardArrowDown, "Jump to bottom")
                     }
                 }
 
@@ -407,7 +437,7 @@ fun ChatScreen(
                         showFloatingDate = false
                     }
                 }
-                
+
                 // Pagination trigger
                 val shouldLoadMore = remember {
                     derivedStateOf {
@@ -416,7 +446,7 @@ fun ChatScreen(
                         totalItems > 0 && lastVisibleItem >= totalItems - 10
                     }
                 }
-                
+
                 LaunchedEffect(shouldLoadMore.value) {
                     if (shouldLoadMore.value) {
                         viewModel.loadMoreMessages()
@@ -445,7 +475,7 @@ fun ChatScreen(
             }
         }
     }
-    
+
     // Bottom Sheets
     if (showMessageInfoFor != null) {
         com.astramesh.app.ui.components.MessageInfoSheet(
@@ -469,12 +499,12 @@ fun ChatScreen(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageBubbleProxy(
-    message: MessagePayload, 
-    showTail: Boolean, 
+    message: MessagePayload,
+    showTail: Boolean,
     isSelected: Boolean,
     isHighlighted: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit, 
+    onLongClick: () -> Unit,
     onSwipeReply: () -> Unit,
     onReplyClick: (String) -> Unit
 ) {
@@ -502,7 +532,7 @@ fun MessageBubbleProxy(
             {
                 com.astramesh.app.ui.adaptive.ReplyPreview(
                     senderName = "Replied",
-                    messageText = "Original message text...",
+                    messageText = message.replyToText ?: "Original message unavailable",
                     accentColor = accentColor,
                     modifier = Modifier.clickable { onReplyClick(message.replyToId) }
                 )
@@ -512,14 +542,14 @@ fun MessageBubbleProxy(
         Column {
             if (message.hasAttachments) {
                 com.astramesh.app.ui.components.MediaContent(
-                    message = message, 
-                    isSent = isSent 
+                    message = message,
+                    isSent = isSent
                 )
             }
             if (message.text.isNotBlank() && !message.text.startsWith("Media Message (") && !message.text.startsWith("Receiving ")) {
                 val isEmoji = com.astramesh.app.ui.utils.TextUtils.isEmojiOnly(message.text)
                 val annotatedText = com.astramesh.app.ui.utils.TextUtils.parseMarkdown(message.text, codeColor = AstraTheme.colors.onSurfaceVariant.copy(alpha = 0.2f))
-                
+
                 Text(
                     text = annotatedText,
                     color = if (isSent) AstraTheme.colors.onPrimary else AstraTheme.colors.onSurfaceVariant,
@@ -564,4 +594,3 @@ fun ReplyPreviewBanner(message: MessagePayload, onCancel: () -> Unit) {
         }
     }
 }
-

@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -66,7 +67,7 @@ fun ConnectionStatusPill(
     val icon: ImageVector = when (transportType) {
         TransportType.BLUETOOTH -> Icons.Default.Bluetooth
         TransportType.WIFI_DIRECT -> Icons.Default.Wifi
-        TransportType.TOR -> androidx.compose.material.icons.Icons.Rounded.VpnKey
+        TransportType.TOR -> Icons.Default.Lock
         TransportType.SWITCHING -> Icons.Default.Warning
         TransportType.OFFLINE -> Icons.Default.Warning
     }

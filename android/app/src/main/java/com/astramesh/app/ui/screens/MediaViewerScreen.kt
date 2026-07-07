@@ -17,12 +17,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.astramesh.app.ui.components.shareAttachment
 import com.astramesh.app.ui.theme.DeepBlack
 import com.astramesh.app.ui.theme.SoftWhite
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MediaViewerScreen(navController: NavController, uri: String, title: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var scale by remember { mutableFloatStateOf(1f) }
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
@@ -38,7 +40,7 @@ fun MediaViewerScreen(navController: NavController, uri: String, title: String) 
                     }
                 },
                 actions = {
-                    IconButton(onClick = { /* Share to other apps */ }) {
+                    IconButton(onClick = { shareAttachment(context, uri, "image/*", title) }) {
                         Icon(Icons.Rounded.Share, contentDescription = "Share", tint = SoftWhite)
                     }
                 },

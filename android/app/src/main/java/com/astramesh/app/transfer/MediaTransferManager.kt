@@ -2,6 +2,7 @@ package com.astramesh.app.transfer
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.util.Log
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -64,6 +65,7 @@ class MediaTransferManager(
         
         // 1. Copy file to sandboxed storage
         val localFile = copyToSandbox(fileUri, messageType, messageId) ?: return@withContext null
+        val displayName = getDisplayName(fileUri) ?: localFile.name
         val fileSize = localFile.length()
         
         // 2. Generate Checksum
@@ -83,7 +85,7 @@ class MediaTransferManager(
                 direction = "sent",
                 status = "pending",
                 messageType = messageType,
-                fileName = localFile.name,
+                fileName = displayName,
                 fileSize = fileSize,
                 mimeType = mimeType,
                 localUri = localFile.absolutePath,
@@ -177,6 +179,15 @@ class MediaTransferManager(
             Log.e(TAG, "Failed to copy file to sandbox", e)
             null
         }
+    }
+
+    private fun getDisplayName(uri: Uri): String? {
+        return runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+            }
+        }.getOrNull()?.takeIf { it.isNotBlank() }
     }
 
     private fun calculateSha256(file: File): String {

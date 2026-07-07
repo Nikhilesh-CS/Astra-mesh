@@ -1,5 +1,7 @@
 package com.astramesh.app.ui.screens
 
+
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -84,7 +86,7 @@ fun ContactsScreen(
                 items(contacts) { contact ->
                     val isNearby = connectedEndpoints.contains(contact.endpointId)
                     val isTor = contact.onionAddress.isNotBlank() && isTorReady
-                    
+
                     ContactItemRow(
                         contact = contact,
                         isNearby = isNearby,
@@ -115,7 +117,7 @@ fun ContactItemRow(
     ) {
         AstraAvatar(name = contact.name, size = AstraTheme.spacing.massive4, isOnline = isNearby || isTor)
         Spacer(modifier = Modifier.width(AstraTheme.spacing.standard))
-        
+
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = contact.name,
@@ -125,7 +127,7 @@ fun ContactItemRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            
+
             if (contact.onionAddress.isNotBlank()) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
@@ -145,7 +147,7 @@ fun ContactItemRow(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            
+
             Spacer(modifier = Modifier.height(AstraTheme.spacing.tiny))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (isNearby) {
@@ -165,5 +167,3 @@ fun ContactItemRow(
         }
     }
 }
-
-

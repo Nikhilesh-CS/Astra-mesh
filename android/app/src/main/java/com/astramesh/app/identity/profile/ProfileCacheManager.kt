@@ -29,10 +29,12 @@ class ProfileCacheManagerImpl(private val context: Context) : ProfileCacheManage
         file
     }
 
-    override suspend fun clearCache(ownerKey: String) = withContext(Dispatchers.IO) {
-        val prefix = "${ownerKey}_avatar_"
-        profileDir.listFiles { _, name -> name.startsWith(prefix) }?.forEach {
-            it.delete()
+    override suspend fun clearCache(ownerKey: String) {
+        withContext(Dispatchers.IO) {
+            val prefix = "${ownerKey}_avatar_"
+            profileDir.listFiles { _, name -> name.startsWith(prefix) }?.forEach {
+                it.delete()
+            }
         }
     }
 }

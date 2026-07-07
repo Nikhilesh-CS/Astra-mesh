@@ -1,5 +1,7 @@
 package com.astramesh.app.ui.screens
 
+
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -30,7 +32,7 @@ fun DiagnosticsDialog(
     val torStatus by torManager.torStatus.collectAsStateWithLifecycle()
     val onionAddress by torManager.onionAddress.collectAsStateWithLifecycle()
     val isTorReady by torManager.isTorReady.collectAsStateWithLifecycle()
-    
+
     val connectedEndpoints by nearbyManager.connectedEndpoints.collectAsStateWithLifecycle()
     val connectionStatus by nearbyManager.connectionStatus.collectAsStateWithLifecycle()
 
@@ -45,7 +47,7 @@ fun DiagnosticsDialog(
                 // Tor Section
                 Text("Tor Network", color = AccentViolet, fontWeight = FontWeight.SemiBold, fontSize = AstraTheme.typography.bodyMedium.fontSize)
                 Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
-                
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
@@ -63,10 +65,10 @@ fun DiagnosticsDialog(
                     Spacer(modifier = Modifier.width(AstraTheme.spacing.small))
                     Text("Status: $torStatus", color = MutedGray, fontSize = AstraTheme.typography.bodySmall.fontSize)
                 }
-                
+
                 Spacer(modifier = Modifier.height(AstraTheme.spacing.tiny))
                 Text("Address: ${if (onionAddress.isNotBlank()) onionAddress else "Not available"}", color = MutedGray, fontSize = AstraTheme.typography.bodySmall.fontSize)
-                
+
                 if (torState is TorState.Starting) {
                     val progress = (torState as TorState.Starting).progress
                     Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
@@ -105,4 +107,3 @@ fun DiagnosticsDialog(
         shape = RoundedCornerShape(AstraTheme.spacing.standard)
     )
 }
-

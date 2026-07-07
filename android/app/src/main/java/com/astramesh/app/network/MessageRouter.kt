@@ -108,7 +108,12 @@ class MessageRouter(
 
     // ──────────────────────── SEND MESSAGE ────────────────────────
 
-    suspend fun sendMessage(contactKey: String, text: String): SendResult = withContext(Dispatchers.IO) {
+    suspend fun sendMessage(
+        contactKey: String,
+        text: String,
+        replyToId: String? = null,
+        replyToText: String? = null
+    ): SendResult = withContext(Dispatchers.IO) {
         val identity = identity ?: return@withContext SendResult(false, Transport.FAILED, "Not logged in")
         val contact = db.contactDao().getContact(contactKey)
             ?: return@withContext SendResult(false, Transport.FAILED, "Contact not found")
@@ -130,7 +135,9 @@ class MessageRouter(
                 text = text,
                 timestamp = System.currentTimeMillis(),
                 direction = "sent",
-                status = "pending"
+                status = "pending",
+                replyToId = replyToId,
+                replyToText = replyToText
             )
         )
         Log.d(TAG, "[SEND] Message $messageId queued for $contactKey")

@@ -19,6 +19,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.clickable
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.astramesh.app.engine.MessagePayload
@@ -192,6 +194,7 @@ private fun AudioAttachmentCard(message: MessagePayload) {
 
 @Composable
 private fun DocumentAttachmentCard(message: MessagePayload) {
+    val context = LocalContext.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -225,7 +228,7 @@ private fun DocumentAttachmentCard(message: MessagePayload) {
                 maxLines = 1
             )
         }
-        IconButton(onClick = { /* Save */ }) {
+        IconButton(onClick = { saveAttachmentToDownloads(context, message) }) {
             Icon(Icons.Rounded.SaveAlt, "Save", tint = AstraTheme.colors.onSurfaceVariant)
         }
     }

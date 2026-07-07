@@ -32,6 +32,7 @@ import com.astramesh.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import android.os.Build
+import android.widget.Toast
 import com.astramesh.app.debug.*
 import androidx.compose.ui.platform.LocalContext
 
@@ -139,9 +140,7 @@ fun DebugScreen(
                         Text("Phase 1 & 3: Performance & Flow", color = AccentCyan)
                         Button(
                             onClick = { 
-                                scope.launch(Dispatchers.IO) {
-                                    // Requires AppDatabase instance, placeholder
-                                }
+                                Toast.makeText(context, "Stress test requires database wiring", Toast.LENGTH_SHORT).show()
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
                             modifier = Modifier.fillMaxWidth()
@@ -172,10 +171,14 @@ fun DebugScreen(
 
                         Text("Phase X: Crash Recovery & Battery", color = AccentCyan)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            Button(onClick = { /* CrashRecoveryEngine.triggerProcessDeath(500) */ }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))) {
+                            Button(onClick = {
+                                scope.launch { CrashRecoveryEngine.triggerProcessDeath(500) }
+                            }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))) {
                                 Text("Kill Process")
                             }
-                            Button(onClick = { /* CrashRecoveryEngine.triggerOOM() */ }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))) {
+                            Button(onClick = {
+                                scope.launch(Dispatchers.Default) { CrashRecoveryEngine.triggerOOM() }
+                            }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))) {
                                 Text("Trigger OOM")
                             }
                         }

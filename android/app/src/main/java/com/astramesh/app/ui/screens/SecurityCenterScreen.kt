@@ -1,5 +1,7 @@
 package com.astramesh.app.ui.screens
 
+
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -72,7 +74,7 @@ fun SecurityCenterScreen(
                 statusColor = NeonGreen,
                 icon = "🔒"
             )
-            
+
             SecurityCard(
                 title = "Identity Key",
                 value = identityKey,
@@ -128,7 +130,7 @@ fun SecurityCard(
         .fillMaxWidth()
         .clip(RoundedCornerShape(AstraTheme.spacing.standard))
         .background(CardSurface)
-    
+
     if (onCopy != null) {
         modifier = modifier.clickable { onCopy() }
     }
@@ -156,4 +158,3 @@ fun SecurityCard(
         }
     }
 }
-

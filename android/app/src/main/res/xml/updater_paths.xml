@@ -2,5 +2,6 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <external-path name="external_files" path="Download/" />
     <external-files-path name="external_files_dir" path="Download/" />
+    <external-files-path name="external_media_dir" path="media/" />
     <cache-path name="cache_files" path="/" />
 </paths>

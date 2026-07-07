@@ -1,6 +1,16 @@
 package com.astramesh.app.ui.components
 
+import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
+import android.media.MediaPlayer
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.widget.Toast
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -10,7 +20,7 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.VideoFile
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -19,7 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.astramesh.app.data.MessagePayload
+import com.astramesh.app.engine.MessagePayload
 import com.astramesh.app.ui.theme.AccentViolet
 import com.astramesh.app.ui.theme.CardSurface
 import com.astramesh.app.ui.theme.DimGray
@@ -28,6 +38,7 @@ import com.astramesh.app.ui.theme.SoftWhite
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import java.io.File
+import java.io.FileInputStream
 
 @Composable
 fun MediaContent(message: MessagePayload, isSent: Boolean) {
@@ -54,12 +65,14 @@ fun MediaContent(message: MessagePayload, isSent: Boolean) {
 
 @Composable
 fun ImageBubble(message: MessagePayload, isSent: Boolean) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     Box(
         modifier = Modifier
             .widthIn(max = 240.dp)
             .height(200.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.Black.copy(alpha = 0.3f)),
+            .background(Color.Black.copy(alpha = 0.3f))
+            .clickable(enabled = message.localUri != null) { openAttachment(context, message) },
         contentAlignment = Alignment.Center
     ) {
         if (message.localUri != null) {
@@ -93,12 +106,14 @@ fun ImageBubble(message: MessagePayload, isSent: Boolean) {
 
 @Composable
 fun VideoBubble(message: MessagePayload, isSent: Boolean) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     Box(
         modifier = Modifier
             .widthIn(max = 240.dp)
             .height(200.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.Black.copy(alpha = 0.3f)),
+            .background(Color.Black.copy(alpha = 0.3f))
+            .clickable(enabled = message.localUri != null) { openAttachment(context, message) },
         contentAlignment = Alignment.Center
     ) {
         Icon(Icons.Rounded.VideoFile, contentDescription = "Video", tint = MutedGray, modifier = Modifier.size(48.dp))
@@ -108,6 +123,16 @@ fun VideoBubble(message: MessagePayload, isSent: Boolean) {
 
 @Composable
 fun AudioBubble(message: MessagePayload, isSent: Boolean) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var player by remember { mutableStateOf<MediaPlayer?>(null) }
+    var isPlaying by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) {
+        onDispose {
+            player?.release()
+            player = null
+        }
+    }
+
     Row(
         modifier = Modifier
             .width(200.dp)
@@ -115,7 +140,37 @@ fun AudioBubble(message: MessagePayload, isSent: Boolean) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(
-            onClick = { /* Play */ },
+            onClick = {
+                val file = message.localUri?.let { File(it) }
+                if (file == null || !file.exists()) {
+                    Toast.makeText(context, "Audio file missing", Toast.LENGTH_SHORT).show()
+                    return@IconButton
+                }
+                try {
+                    if (isPlaying) {
+                        player?.pause()
+                        isPlaying = false
+                    } else {
+                        val existing = player
+                        if (existing == null) {
+                            player = MediaPlayer().apply {
+                                setDataSource(file.absolutePath)
+                                setOnCompletionListener { isPlaying = false }
+                                prepare()
+                                start()
+                            }
+                        } else {
+                            existing.start()
+                        }
+                        isPlaying = true
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Cannot play audio", Toast.LENGTH_SHORT).show()
+                    player?.release()
+                    player = null
+                    isPlaying = false
+                }
+            },
             modifier = Modifier.background(if (isSent) Color.White.copy(alpha = 0.2f) else CardSurface, RoundedCornerShape(24.dp))
         ) {
             Icon(Icons.Rounded.PlayArrow, "Play", tint = if (isSent) Color.White else AccentViolet)
@@ -131,6 +186,7 @@ fun AudioBubble(message: MessagePayload, isSent: Boolean) {
 @Composable
 fun FileBubble(message: MessagePayload, isSent: Boolean) {
     val isApk = message.messageType == "APK"
+    val context = androidx.compose.ui.platform.LocalContext.current
     
     Column(
         modifier = Modifier
@@ -161,23 +217,13 @@ fun FileBubble(message: MessagePayload, isSent: Boolean) {
         if (message.localUri != null && message.transferProgress == 100) {
             Spacer(modifier = Modifier.height(8.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                val context = androidx.compose.ui.platform.LocalContext.current
                 TextButton(onClick = { 
-                    try {
-                        val uri = android.net.Uri.parse(message.localUri)
-                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                            setDataAndType(uri, message.mimeType ?: "*/*")
-                            flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK
-                        }
-                        context.startActivity(intent)
-                    } catch (e: Exception) {
-                        android.widget.Toast.makeText(context, "Cannot open file", android.widget.Toast.LENGTH_SHORT).show()
-                    }
+                    openAttachment(context, message)
                 }, contentPadding = PaddingValues(0.dp)) {
                     Text(if (isApk) "INSTALL" else "OPEN", color = if (isSent) Color.White else AccentViolet, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
                 TextButton(onClick = { 
-                    android.widget.Toast.makeText(context, "Saved to Downloads", android.widget.Toast.LENGTH_SHORT).show()
+                    saveAttachmentToDownloads(context, message)
                 }, contentPadding = PaddingValues(0.dp)) {
                     Text("SAVE", color = if (isSent) Color.White else AccentViolet, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
@@ -188,5 +234,80 @@ fun FileBubble(message: MessagePayload, isSent: Boolean) {
                 LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth().height(4.dp).padding(top = 8.dp), color = if (isSent) Color.White else AccentViolet, trackColor = DimGray)
             }
         }
+    }
+}
+
+fun openAttachment(context: Context, message: MessagePayload) {
+    val file = message.localUri?.let { File(it) }
+    if (file == null || !file.exists()) {
+        Toast.makeText(context, "File missing", Toast.LENGTH_SHORT).show()
+        return
+    }
+
+    try {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, message.mimeType ?: "*/*")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(Intent.createChooser(intent, "Open with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (e: Exception) {
+        Toast.makeText(context, "Cannot open file", Toast.LENGTH_SHORT).show()
+    }
+}
+
+fun shareAttachment(context: Context, localUri: String, mimeType: String?, title: String) {
+    val file = File(localUri)
+    if (!file.exists()) {
+        Toast.makeText(context, "File missing", Toast.LENGTH_SHORT).show()
+        return
+    }
+
+    try {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType ?: "*/*"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, title))
+    } catch (e: Exception) {
+        Toast.makeText(context, "Cannot share file", Toast.LENGTH_SHORT).show()
+    }
+}
+
+fun saveAttachmentToDownloads(context: Context, message: MessagePayload) {
+    val source = message.localUri?.let { File(it) }
+    if (source == null || !source.exists()) {
+        Toast.makeText(context, "File missing", Toast.LENGTH_SHORT).show()
+        return
+    }
+
+    val fileName = message.fileName ?: source.name
+    val mimeType = message.mimeType ?: "application/octet-stream"
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                put(MediaStore.Downloads.MIME_TYPE, mimeType)
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: throw IllegalStateException("Could not create download")
+            context.contentResolver.openOutputStream(uri)?.use { output ->
+                FileInputStream(source).use { input -> input.copyTo(output) }
+            }
+            values.clear()
+            values.put(MediaStore.Downloads.IS_PENDING, 0)
+            context.contentResolver.update(uri, values, null, null)
+        } else {
+            val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            downloads.mkdirs()
+            source.copyTo(File(downloads, fileName), overwrite = true)
+        }
+        Toast.makeText(context, "Saved to Downloads", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        Toast.makeText(context, "Could not save file", Toast.LENGTH_SHORT).show()
     }
 }

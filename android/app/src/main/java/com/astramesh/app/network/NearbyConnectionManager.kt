@@ -45,11 +45,17 @@ class NearbyConnectionManager(private val context: Context) {
     private var localName: String = "Unknown"
     private val endpointNames = mutableMapOf<String, String>()
 
+    private var isAdvertising = false
+    private var isDiscovering = false
+
     fun setLocalName(name: String) {
         localName = name
     }
 
     fun startAdvertising() {
+        if (isAdvertising) return
+        isAdvertising = true
+
         val advertisingOptions = AdvertisingOptions.Builder()
             .setStrategy(STRATEGY)
             .build()
@@ -64,11 +70,15 @@ class NearbyConnectionManager(private val context: Context) {
             _connectionStatus.value = "Advertising"
         }.addOnFailureListener { e ->
             Log.e(TAG, "Advertising failed", e)
+            isAdvertising = false
             _connectionStatus.value = "Advertising failed"
         }
     }
 
     fun startDiscovery() {
+        if (isDiscovering) return
+        isDiscovering = true
+
         val discoveryOptions = DiscoveryOptions.Builder()
             .setStrategy(STRATEGY)
             .build()
@@ -82,6 +92,7 @@ class NearbyConnectionManager(private val context: Context) {
             _connectionStatus.value = "Discovering"
         }.addOnFailureListener { e ->
             Log.e(TAG, "Discovery failed", e)
+            isDiscovering = false
             _connectionStatus.value = "Discovery failed"
         }
     }
@@ -125,6 +136,8 @@ class NearbyConnectionManager(private val context: Context) {
         connectionsClient.stopAdvertising()
         connectionsClient.stopDiscovery()
         connectionsClient.stopAllEndpoints()
+        isAdvertising = false
+        isDiscovering = false
         _nearbyDevices.value = emptyList()
         _connectedEndpoints.value = emptySet()
         _connectionStatus.value = "Stopped"
