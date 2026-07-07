@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,14 +65,14 @@ fun ChatListScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val contacts by db.contactDao().getAllContacts().collectAsState(initial = emptyList())
-    val nearbyDevices by nearbyManager.nearbyDevices.collectAsState()
-    val pendingRequests by nearbyManager.pendingRequests.collectAsState()
-    val connectedEndpoints by nearbyManager.connectedEndpoints.collectAsState()
-    val connectionStatus by nearbyManager.connectionStatus.collectAsState()
-    val isTorReady by torManager.isTorReady.collectAsState()
-    val torStatus by torManager.torStatus.collectAsState()
-    val onionAddress by torManager.onionAddress.collectAsState()
+    val contacts by db.contactDao().getContactsWithLastMessage().collectAsStateWithLifecycle(initialValue = emptyList())
+    val nearbyDevices by nearbyManager.nearbyDevices.collectAsStateWithLifecycle()
+    val pendingRequests by nearbyManager.pendingRequests.collectAsStateWithLifecycle()
+    val connectedEndpoints by nearbyManager.connectedEndpoints.collectAsStateWithLifecycle()
+    val connectionStatus by nearbyManager.connectionStatus.collectAsStateWithLifecycle()
+    val isTorReady by torManager.isTorReady.collectAsStateWithLifecycle()
+    val torStatus by torManager.torStatus.collectAsStateWithLifecycle()
+    val onionAddress by torManager.onionAddress.collectAsStateWithLifecycle()
 
     var showAddContact by remember { mutableStateOf(false) }
     var showShareContact by remember { mutableStateOf(false) }
@@ -201,15 +202,23 @@ fun ChatListScreen(
                     }
                 }
             } else {
-                items(contacts) { contact ->
-                    val isConnected = connectedEndpoints.contains(contact.endpointId) ||
-                        (contact.onionAddress.isNotBlank() && isTorReady)
+                items(contacts) { contactWithLastMessage ->
+                    val isConnected = connectedEndpoints.contains(contactWithLastMessage.endpointId) ||
+                        (contactWithLastMessage.onionAddress.isNotBlank() && isTorReady)
                     
-                    val lastMessage by db.messageDao().getLastMessageForContact(contact.signingPublicKey).collectAsState(initial = null)
-                    val unreadCount by db.messageDao().getUnreadCountForContact(contact.signingPublicKey).collectAsState(initial = 0)
+                    val lastMessageText = contactWithLastMessage.lastMessageText ?: "Tap to chat..."
+                    val lastMessageTime = contactWithLastMessage.lastMessageTime
+                    val unreadCount = contactWithLastMessage.unreadCount
                     
-                    val lastMessageText = lastMessage?.text ?: "Tap to chat..."
-                    val lastMessageTime = lastMessage?.timestamp
+                    val contact = ContactEntity(
+                        signingPublicKey = contactWithLastMessage.signingPublicKey,
+                        encryptionPublicKey = contactWithLastMessage.encryptionPublicKey,
+                        name = contactWithLastMessage.name,
+                        endpointId = contactWithLastMessage.endpointId,
+                        onionAddress = contactWithLastMessage.onionAddress,
+                        isConnected = contactWithLastMessage.isConnected,
+                        muteUntil = contactWithLastMessage.muteUntil
+                    )
 
                     ContactRow(
                         contact = contact, 

@@ -33,7 +33,8 @@ android {
             enableAndroidTestCoverage = true
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("release")
         }
@@ -64,6 +65,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.activity:activity-compose:1.8.2")
+    implementation("androidx.fragment:fragment-ktx:1.6.2")
     implementation("androidx.work:work-runtime-ktx:2.9.0")
     
     // Compose BOM
@@ -76,11 +78,13 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:2.7.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
 
     // Crypto
     implementation("com.goterl:lazysodium-android:5.1.0@aar")
     implementation("net.java.dev.jna:jna:5.14.0@aar")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("com.google.errorprone:error_prone_annotations:2.23.0")
 
     // Google Nearby Connections (P2P offline)
     implementation("com.google.android.gms:play-services-nearby:19.1.0")

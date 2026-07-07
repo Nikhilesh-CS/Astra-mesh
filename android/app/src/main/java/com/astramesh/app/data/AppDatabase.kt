@@ -22,7 +22,27 @@ data class ContactEntity(
     val muteUntil: Long = 0L
 )
 
-@Entity(tableName = "messages")
+data class ContactWithLastMessage(
+    val signingPublicKey: String,
+    val encryptionPublicKey: String,
+    val name: String,
+    val endpointId: String,
+    val onionAddress: String,
+    val isConnected: Boolean,
+    val muteUntil: Long,
+    val lastMessageText: String?,
+    val lastMessageTime: Long?,
+    val unreadCount: Int
+)
+
+@Entity(
+    tableName = "messages",
+    indices = [
+        androidx.room.Index(value = ["contactKey"]),
+        androidx.room.Index(value = ["messageId"], unique = true),
+        androidx.room.Index(value = ["direction", "status", "retryCount"])
+    ]
+)
 data class MessageEntity(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val messageId: String,
@@ -60,6 +80,15 @@ data class ConnectionRequestEntity(
 interface ContactDao {
     @Query("SELECT * FROM contacts")
     fun getAllContacts(): Flow<List<ContactEntity>>
+
+    @Query("""
+        SELECT c.*, 
+               (SELECT text FROM messages m WHERE m.contactKey = c.signingPublicKey ORDER BY timestamp DESC LIMIT 1) as lastMessageText,
+               (SELECT timestamp FROM messages m WHERE m.contactKey = c.signingPublicKey ORDER BY timestamp DESC LIMIT 1) as lastMessageTime,
+               (SELECT COUNT(*) FROM messages m WHERE m.contactKey = c.signingPublicKey AND m.direction = 'received' AND m.status != 'read') as unreadCount
+        FROM contacts c
+    """)
+    fun getContactsWithLastMessage(): Flow<List<ContactWithLastMessage>>
 
     @Query("SELECT * FROM contacts WHERE signingPublicKey = :signingPublicKey LIMIT 1")
     fun getContact(signingPublicKey: String): ContactEntity?
@@ -156,8 +185,8 @@ interface ConnectionRequestDao {
 }
 
 @Database(
-    entities = [ContactEntity::class, MessageEntity::class, ConnectionRequestEntity::class, MediaTransferEntity::class],
-    version = 7,
+    entities = [ContactEntity::class, MessageEntity::class, ConnectionRequestEntity::class, MediaTransferEntity::class, ProfileEntity::class],
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -165,6 +194,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
     abstract fun connectionRequestDao(): ConnectionRequestDao
     abstract fun mediaTransferDao(): MediaTransferDao
+    abstract fun profileDao(): ProfileDao
 
     companion object {
         val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) { override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {} }
@@ -191,6 +221,11 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE messages ADD COLUMN checksum TEXT")
                 db.execSQL("ALTER TABLE messages ADD COLUMN transferStatus TEXT")
 
+                // Create indices for performance
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_messages_contactKey` ON `messages` (`contactKey`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_messages_messageId` ON `messages` (`messageId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_messages_direction_status_retryCount` ON `messages` (`direction`, `status`, `retryCount`)")
+
                 // Create media_transfers table
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS `media_transfers` (
@@ -203,6 +238,20 @@ abstract class AppDatabase : RoomDatabase() {
                         `lastUpdatedAt` INTEGER NOT NULL,
                         `transport` TEXT,
                         PRIMARY KEY(`messageId`)
+                    )
+                """.trimIndent())
+            }
+        }
+
+        val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `profiles` (
+                        `contactKey` TEXT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `bio` TEXT NOT NULL,
+                        `timestamp` INTEGER NOT NULL,
+                        PRIMARY KEY(`contactKey`)
                     )
                 """.trimIndent())
             }
