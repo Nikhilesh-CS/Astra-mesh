@@ -65,7 +65,7 @@ fun ChatListScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val contacts by db.contactDao().getAllContacts().collectAsStateWithLifecycle(initial = null)
+    val contacts by db.contactDao().getAllContacts().collectAsStateWithLifecycle(initialValue = null)
     val nearbyDevices by nearbyManager.nearbyDevices.collectAsStateWithLifecycle()
     val pendingRequests by nearbyManager.pendingRequests.collectAsStateWithLifecycle()
     val connectedEndpoints by nearbyManager.connectedEndpoints.collectAsStateWithLifecycle()
@@ -198,8 +198,8 @@ fun ChatListScreen(
                     val isConnected = connectedEndpoints.contains(contact.endpointId) ||
                         (contact.onionAddress.isNotBlank() && isTorReady)
                     
-                    val lastMessage by db.messageDao().getLastMessageForContact(contact.signingPublicKey).collectAsStateWithLifecycle(initial = null)
-                    val unreadCount by db.messageDao().getUnreadCountForContact(contact.signingPublicKey).collectAsStateWithLifecycle(initial = 0)
+                    val lastMessage by db.messageDao().getLastMessageForContact(contact.signingPublicKey).collectAsStateWithLifecycle(initialValue = null)
+                    val unreadCount by db.messageDao().getUnreadCountForContact(contact.signingPublicKey).collectAsStateWithLifecycle(initialValue = 0)
                     
                     val lastMessageText = lastMessage?.text ?: "Tap to chat..."
                     val lastMessageTime = lastMessage?.timestamp
@@ -368,6 +368,7 @@ fun ContactRow(contact: ContactEntity, isConnected: Boolean, lastMessageText: St
         }
     }
 }
+
 
 
 

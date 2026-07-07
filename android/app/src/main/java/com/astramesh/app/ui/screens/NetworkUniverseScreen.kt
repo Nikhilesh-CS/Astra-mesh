@@ -53,7 +53,7 @@ fun NetworkUniverseScreen(
 
     // Using collected states for dynamic nodes
     val nearbyPeers by nearbyManager.connectedEndpoints.collectAsStateWithLifecycle()
-    val activeOnionConnections by torManager.activeConnections.collectAsStateWithLifecycle(initial = emptyList())
+    val activeOnionConnections by torManager.activeConnections.collectAsStateWithLifecycle(initialValue = emptyList())
     val torReady by torManager.isTorReady.collectAsStateWithLifecycle()
 
     // Use exact numbers, no maxOf mocks
@@ -181,4 +181,5 @@ fun NetworkUniverseScreen(
         }
     }
 }
+
 

@@ -66,11 +66,11 @@ fun SettingsScreen(
     var identity by remember { mutableStateOf(identityManager.loadIdentity()) }
     val scope = rememberCoroutineScope()
 
-    val torModeEnabled by settingsManager.torEnabledFlow.collectAsStateWithLifecycle(initial = true)
-    val hideOnlineStatus by settingsManager.hideOnlineStatusFlow.collectAsStateWithLifecycle(initial = false)
-    val reduceMotion by settingsManager.reduceMotionFlow.collectAsStateWithLifecycle(initial = false)
-    val showTransportIcons by settingsManager.showTransportIconsFlow.collectAsStateWithLifecycle(initial = true)
-    val darkMode by settingsManager.darkModeFlow.collectAsStateWithLifecycle(initial = true)
+    val torModeEnabled by settingsManager.torEnabledFlow.collectAsStateWithLifecycle(initialValue = true)
+    val hideOnlineStatus by settingsManager.hideOnlineStatusFlow.collectAsStateWithLifecycle(initialValue = false)
+    val reduceMotion by settingsManager.reduceMotionFlow.collectAsStateWithLifecycle(initialValue = false)
+    val showTransportIcons by settingsManager.showTransportIconsFlow.collectAsStateWithLifecycle(initialValue = true)
+    val darkMode by settingsManager.darkModeFlow.collectAsStateWithLifecycle(initialValue = true)
     
     // Dialog States
     var showEditProfileDialog by remember { mutableStateOf(false) }
@@ -764,4 +764,5 @@ fun SettingsSwitchItem(
         )
     }
 }
+
 

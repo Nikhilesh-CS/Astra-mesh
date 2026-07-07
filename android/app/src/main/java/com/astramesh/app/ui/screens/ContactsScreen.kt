@@ -37,7 +37,7 @@ fun ContactsScreen(
     nearbyManager: NearbyConnectionManager,
     torManager: TorManager
 ) {
-    val contacts by db.contactDao().getAllContacts().collectAsStateWithLifecycle(initial = emptyList())
+    val contacts by db.contactDao().getAllContacts().collectAsStateWithLifecycle(initialValue = emptyList())
     val connectedEndpoints by nearbyManager.connectedEndpoints.collectAsStateWithLifecycle()
     val isTorReady by torManager.isTorReady.collectAsStateWithLifecycle()
 
@@ -165,4 +165,5 @@ fun ContactItemRow(
         }
     }
 }
+
 
