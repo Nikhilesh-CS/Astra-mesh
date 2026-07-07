@@ -130,6 +130,26 @@ class ProfileSyncManager(
         messageRouter.sendRawPayload(targetContactKey, json.toString(), MeshProtocol.TYPE_PROFILE_UPDATE)
     }
 
+    suspend fun broadcastLocalProfileToAll() {
+        val myProfile = profileRepository.getLocalProfile().firstOrNull() ?: return
+        
+        val json = JSONObject()
+            .put("version", myProfile.profileVersion)
+            .put("name", myProfile.name)
+            .put("bio", myProfile.bio)
+            .put("statusMessage", myProfile.statusMessage)
+            .put("avatarHash", myProfile.avatarHash ?: "")
+            .put("profileHash", myProfile.profileHash)
+            .put("lastUpdatedAt", myProfile.lastUpdatedAt)
+
+        // For now, let's assume we broadcast to all known contacts, 
+        // MessageRouter handles whether to relay or use Tor
+        val contacts = com.astramesh.app.service.AstraMeshService.getInstance()?.db?.contactDao()?.getAllContactsSync() ?: return
+        for (contact in contacts) {
+            messageRouter.sendRawPayload(contact.signingPublicKey, json.toString(), MeshProtocol.TYPE_PROFILE_UPDATE)
+        }
+    }
+
     private suspend fun sendProfilePhotoRequest(targetContactKey: String, avatarHash: String) {
         val json = JSONObject().put("avatarHash", avatarHash)
         messageRouter.sendRawPayload(targetContactKey, json.toString(), MeshProtocol.TYPE_REQUEST_PROFILE_PHOTO)

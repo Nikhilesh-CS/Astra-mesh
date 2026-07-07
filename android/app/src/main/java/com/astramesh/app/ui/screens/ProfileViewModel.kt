@@ -82,6 +82,9 @@ class ProfileViewModel(
                     avatarUri = state.avatarUri
                 )
                 
+                // Broadcast to network
+                com.astramesh.app.service.AstraMeshService.getInstance()?.profileSyncManager?.broadcastLocalProfileToAll()
+                
                 _uiState.update { it.copy(isSaving = false, isSuccess = true) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isSaving = false, error = e.message ?: "Failed to save profile") }
