@@ -74,6 +74,8 @@ class AstraMeshService : Service() {
         private set
     lateinit var callManager: com.astramesh.app.call.CallManager
         private set
+    lateinit var presenceManager: com.astramesh.app.presence.PresenceManager
+        private set
     lateinit var profileSyncManager: com.astramesh.app.identity.profile.ProfileSyncManager
         private set
     lateinit var settingsManager: com.astramesh.app.data.SettingsManager
@@ -113,7 +115,9 @@ class AstraMeshService : Service() {
                 AppDatabase.MIGRATION_5_6,
                 AppDatabase.MIGRATION_6_7,
                 AppDatabase.MIGRATION_7_8,
-                AppDatabase.MIGRATION_8_9
+                AppDatabase.MIGRATION_8_9,
+                AppDatabase.MIGRATION_9_10,
+                AppDatabase.MIGRATION_10_11
             )
             .build()
 
@@ -124,6 +128,7 @@ class AstraMeshService : Service() {
         astraFastLane = com.astramesh.app.realtime.AstraFastLane(realtimeEngineManager)
         mediaTransferManager = com.astramesh.app.transfer.MediaTransferManager(this, db, messageRouter, astraFastLane)
         callManager = com.astramesh.app.call.CallManager(this, db, messageRouter)
+        presenceManager = com.astramesh.app.presence.PresenceManager(serviceScope, messageRouter)
         
         val profileCache = com.astramesh.app.identity.profile.ProfileCacheManagerImpl(this)
         val imageProcessor = com.astramesh.app.media.ImageProcessor(this)

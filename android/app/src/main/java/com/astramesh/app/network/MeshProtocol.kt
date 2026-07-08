@@ -9,6 +9,8 @@ object MeshProtocol {
     const val TYPE_RELAY = "relay"
     const val TYPE_ACK = "ack"
     const val TYPE_READ = "read"
+    const val TYPE_REACTION = "reaction"
+    const val TYPE_PRESENCE = "presence"
     const val TYPE_PING = "ping"
     const val TYPE_PONG = "pong"
     
@@ -68,20 +70,24 @@ object MeshProtocol {
         return json.toString()
     }
 
-    fun encodeAck(messageId: String, fromKey: String, senderOnion: String? = null): String {
+    fun encodeAck(messageId: String, fromKey: String, toKey: String? = null, senderOnion: String? = null, ttl: Int = DEFAULT_TTL): String {
         val json = JSONObject()
             .put("type", TYPE_ACK)
             .put("msgId", messageId)
             .put("from", fromKey)
+            .put("ttl", ttl)
+        if (!toKey.isNullOrBlank()) json.put("to", toKey)
         if (!senderOnion.isNullOrBlank()) json.put("senderOnion", senderOnion)
         return json.toString()
     }
 
-    fun encodeRead(messageId: String, fromKey: String, senderOnion: String? = null): String {
+    fun encodeRead(messageId: String, fromKey: String, toKey: String? = null, senderOnion: String? = null, ttl: Int = DEFAULT_TTL): String {
         val json = JSONObject()
             .put("type", TYPE_READ)
             .put("msgId", messageId)
             .put("from", fromKey)
+            .put("ttl", ttl)
+        if (!toKey.isNullOrBlank()) json.put("to", toKey)
         if (!senderOnion.isNullOrBlank()) json.put("senderOnion", senderOnion)
         return json.toString()
     }

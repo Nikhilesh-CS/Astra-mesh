@@ -11,6 +11,12 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -22,14 +28,57 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import com.astramesh.app.data.AppDatabase
+import com.astramesh.app.data.ContactEntity
+import com.astramesh.app.data.ProfileEntity
 import com.astramesh.app.ui.theme.AstraTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+private data class ContactProfileUiState(
+    val contact: ContactEntity? = null,
+    val profile: ProfileEntity? = null,
+    val mediaCount: Int = 0,
+    val fileCount: Int = 0,
+    val linkCount: Int = 0,
+    val isLoading: Boolean = true
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContactProfileScreen(
     navController: NavController,
-    contactKey: String // Will be used to load profile from ViewModel
+    contactKey: String,
+    db: AppDatabase
 ) {
+    val scope = rememberCoroutineScope()
+    var uiState by remember(contactKey) { mutableStateOf(ContactProfileUiState()) }
+
+    LaunchedEffect(contactKey) {
+        uiState = withContext(Dispatchers.IO) {
+            val contact = db.contactDao().getContact(contactKey)
+            val profile = db.profileDao().getProfileSync(contactKey)
+            val messages = db.messageDao().getMessagesForContactSync(contactKey)
+            ContactProfileUiState(
+                contact = contact,
+                profile = profile,
+                mediaCount = messages.count { it.messageType in setOf("IMAGE", "VIDEO", "GIF", "STICKER") },
+                fileCount = messages.count { it.messageType in setOf("DOCUMENT", "APK", "AUDIO", "VOICE") },
+                linkCount = messages.count { it.text.contains("http://") || it.text.contains("https://") },
+                isLoading = false
+            )
+        }
+    }
+
+    val contact = uiState.contact
+    val profile = uiState.profile
+    val displayName = profile?.name?.takeIf { it.isNotBlank() } ?: contact?.name ?: "Astra contact"
+    val avatarPath = profile?.avatarLocalPath
+    val status = profile?.statusMessage?.takeIf { it.isNotBlank() } ?: if (contact?.isConnected == true) "Online" else "Offline"
+    val bio = profile?.bio?.takeIf { it.isNotBlank() } ?: "No bio shared yet."
+    val fingerprint = contactKey.chunked(4).take(8).joinToString(" ")
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -75,7 +124,7 @@ fun ContactProfileScreen(
                 ) {
                     // Blurred Background Fallback
                     AsyncImage(
-                        model = null,
+                        model = avatarPath,
                         contentDescription = null,
                         modifier = Modifier
                             .fillMaxSize()
@@ -85,7 +134,7 @@ fun ContactProfileScreen(
                     )
                     
                     AsyncImage(
-                        model = null,
+                        model = avatarPath,
                         contentDescription = "Contact Avatar",
                         modifier = Modifier
                             .size(200.dp)
@@ -99,14 +148,14 @@ fun ContactProfileScreen(
 
                 // Name & Status
                 Text(
-                    text = "Contact Name",
+                    text = displayName,
                     style = AstraTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 
                 Text(
-                    text = "Status message here...",
+                    text = status,
                     style = AstraTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
@@ -147,7 +196,12 @@ fun ContactProfileScreen(
                         )
                         Icon(Icons.Rounded.ChevronRight, "View All", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    // Horizontal scroll of media could go here
+                    Text(
+                        text = "${uiState.mediaCount} media • ${uiState.fileCount} files • ${uiState.linkCount} links",
+                        style = AstraTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
@@ -165,7 +219,7 @@ fun ContactProfileScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "This is a placeholder bio for the contact.",
+                        text = bio,
                         style = AstraTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier.padding(top = 8.dp)
@@ -177,13 +231,18 @@ fun ContactProfileScreen(
                 // Identity Section
                 ListItem(
                     headlineContent = { Text("Identity Fingerprint") },
-                    supportingContent = { Text("AB12...9F84") },
+                    supportingContent = { Text(fingerprint) },
                     leadingContent = { Icon(Icons.Rounded.Fingerprint, contentDescription = null) }
                 )
                 ListItem(
                     headlineContent = { Text("Onion Address") },
-                    supportingContent = { Text("astramesh...onion") },
+                    supportingContent = { Text(contact?.onionAddress?.takeIf { it.isNotBlank() } ?: "Not shared") },
                     leadingContent = { Icon(Icons.Rounded.Router, contentDescription = null) }
+                )
+                ListItem(
+                    headlineContent = { Text("Encryption") },
+                    supportingContent = { Text("End-to-end encrypted identity ${if (contact?.encryptionPublicKey?.isNotBlank() == true) "verified" else "pending"}") },
+                    leadingContent = { Icon(Icons.Rounded.Security, contentDescription = null) }
                 )
 
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(vertical = AstraTheme.spacing.small))
@@ -193,6 +252,18 @@ fun ContactProfileScreen(
                     headlineContent = { Text("Mute Notifications") },
                     leadingContent = { Icon(Icons.Rounded.NotificationsOff, contentDescription = null) },
                     modifier = Modifier.clickable { }
+                )
+                ListItem(
+                    headlineContent = { Text("Delete Chat") },
+                    leadingContent = {
+                        Icon(Icons.Rounded.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                    },
+                    colors = ListItemDefaults.colors(headlineColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.clickable {
+                        scope.launch(Dispatchers.IO) {
+                            db.messageDao().clearChat(contactKey)
+                        }
+                    }
                 )
                 ListItem(
                     headlineContent = { Text("Block Contact") },
@@ -236,4 +307,3 @@ fun ActionChip(
         )
     }
 }
-

@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
@@ -26,6 +27,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -79,6 +81,7 @@ import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -100,7 +103,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -127,6 +129,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
 import com.astramesh.app.data.AppDatabase
 import com.astramesh.app.engine.MessageLifecycleState
@@ -155,8 +160,7 @@ private val ReactionChoices = listOf(
     "\uD83D\uDE2E",
     "\uD83D\uDE22",
     "\uD83D\uDD25",
-    "\uD83D\uDC4F",
-    "\u2795"
+    "\uD83D\uDC4F"
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -170,8 +174,35 @@ fun ChatScreen(
     mediaTransferManager: MediaTransferManager
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val viewModel = remember(contactKey) { ChatViewModel(contactKey, db, messageRouter) }
+
+    DisposableEffect(contactKey, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START,
+                Lifecycle.Event.ON_RESUME -> {
+                    com.astramesh.app.service.ActiveConversationTracker.setActive(contactKey)
+                    com.astramesh.app.service.NotificationHelper.clearContactNotifications(context, contactKey)
+                }
+                Lifecycle.Event.ON_STOP,
+                Lifecycle.Event.ON_DESTROY -> {
+                    com.astramesh.app.service.ActiveConversationTracker.clear(contactKey)
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            com.astramesh.app.service.ActiveConversationTracker.setActive(contactKey)
+            com.astramesh.app.service.NotificationHelper.clearContactNotifications(context, contactKey)
+        }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            com.astramesh.app.service.ActiveConversationTracker.clear(contactKey)
+        }
+    }
 
     val contactName by viewModel.contactName.collectAsStateWithLifecycle()
     val contactEndpoint by viewModel.contactEndpoint.collectAsStateWithLifecycle()
@@ -182,10 +213,14 @@ fun ChatScreen(
     val searchQuery by viewModel.searchEngine.searchQuery.collectAsStateWithLifecycle()
     val searchResults by viewModel.searchEngine.searchResults.collectAsStateWithLifecycle()
     val currentResultIndex by viewModel.searchEngine.currentResultIndex.collectAsStateWithLifecycle()
+    val presenceStates by (com.astramesh.app.service.AstraMeshService.getInstance()
+        ?.presenceManager
+        ?.presence
+        ?: kotlinx.coroutines.flow.MutableStateFlow<Map<String, com.astramesh.app.presence.PresenceState>>(emptyMap())).collectAsStateWithLifecycle()
+    val livePresenceLabel = presenceStates[contactKey]?.label
 
     val listState = rememberLazyListState()
     val smartScrollEngine = remember(listState) { SmartScrollEngine(listState, scope) }
-    val localReactions = remember { mutableStateMapOf<String, String>() }
 
     var text by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<MessagePayload?>(null) }
@@ -195,6 +230,7 @@ fun ChatScreen(
     var highlightedId by remember { mutableStateOf<String?>(null) }
     var showAttachmentSheet by remember { mutableStateOf(false) }
     var showVoiceRecorder by remember { mutableStateOf(false) }
+    var structuredAttachment by remember { mutableStateOf<String?>(null) }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var pendingAudioAction by remember { mutableStateOf<String?>(null) }
 
@@ -221,6 +257,9 @@ fun ChatScreen(
 
     fun queueMediaUri(uri: Uri, mimeType: String, messageType: String) {
         scope.launch {
+            com.astramesh.app.service.AstraMeshService.getInstance()
+                ?.presenceManager
+                ?.sendPresence(contactKey, "uploading", "Uploading ${messageType.lowercase()}...")
             val queuedId = mediaTransferManager.queueMediaTransfer(contactKey, uri, mimeType, messageType)
             Toast.makeText(context, if (queuedId != null) "$messageType queued" else "Could not send $messageType", Toast.LENGTH_SHORT).show()
         }
@@ -258,6 +297,13 @@ fun ChatScreen(
             else -> showVoiceRecorder = true
         }
     }
+    val locationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            sendCurrentLocation(context, viewModel)
+        } else {
+            Toast.makeText(context, "Location permission denied", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     LaunchedEffect(messages.size) {
         val lastMessage = messages.lastOrNull()
@@ -284,6 +330,25 @@ fun ChatScreen(
         }
     }
 
+    LaunchedEffect(text) {
+        if (text.isNotBlank()) {
+            delay(450)
+            if (text.isNotBlank()) {
+                com.astramesh.app.service.AstraMeshService.getInstance()
+                    ?.presenceManager
+                    ?.sendPresence(contactKey, "typing", "Typing...")
+            }
+        }
+    }
+
+    LaunchedEffect(showVoiceRecorder) {
+        if (showVoiceRecorder) {
+            com.astramesh.app.service.AstraMeshService.getInstance()
+                ?.presenceManager
+                ?.sendPresence(contactKey, "recording_voice", "Recording voice...")
+        }
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -295,6 +360,7 @@ fun ChatScreen(
                 isNearbyOnline = isNearbyOnline,
                 contactEndpoint = contactEndpoint,
                 contactOnion = contactOnion,
+                livePresenceLabel = livePresenceLabel,
                 searchMode = searchMode,
                 searchQuery = searchQuery,
                 searchCountLabel = if (searchResults.isEmpty()) "" else "${currentResultIndex + 1}/${searchResults.size}",
@@ -324,6 +390,9 @@ fun ChatScreen(
                 onDelete = {
                     viewModel.deleteMessages(selectedIds)
                     selectedIds = emptySet()
+                },
+                onOpenProfile = {
+                    navController.navigate("contact_profile/$contactKey")
                 },
                 onVoiceCall = {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
@@ -396,7 +465,6 @@ fun ChatScreen(
                         listState = listState,
                         selectedIds = selectedIds,
                         highlightedId = highlightedId,
-                        localReactions = localReactions,
                         onSelectToggle = { message ->
                             selectedIds = if (selectedIds.contains(message.id)) {
                                 selectedIds - message.id
@@ -451,14 +519,7 @@ fun ChatScreen(
             message = target,
             onDismiss = { reactionTarget = null },
             onReaction = { emoji ->
-                if (emoji != "\u2795") {
-                    val current = localReactions[target.id]
-                    if (current == emoji) {
-                        localReactions.remove(target.id)
-                    } else {
-                        localReactions[target.id] = emoji
-                    }
-                }
+                viewModel.toggleReaction(target.id, emoji)
                 reactionTarget = null
             }
         )
@@ -471,8 +532,49 @@ fun ChatScreen(
                 showAttachmentSheet = false
                 attachmentPicker.launch(mimeType)
             },
-            onComingSoon = { title ->
-                Toast.makeText(context, "$title will be wired next", Toast.LENGTH_SHORT).show()
+            onAction = { title ->
+                showAttachmentSheet = false
+                when (title) {
+                    "Camera" -> {
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                            val uri = createTempMediaUri(context, "camera", ".jpg")
+                            pendingCameraUri = uri
+                            cameraLauncher.launch(uri)
+                        } else {
+                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
+                    }
+                    "Voice Note" -> {
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                            showVoiceRecorder = true
+                        } else {
+                            pendingAudioAction = "voice"
+                            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    }
+                    "Location" -> {
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                            sendCurrentLocation(context, viewModel)
+                        } else {
+                            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                        }
+                    }
+                    "Contact" -> shareOwnContact(viewModel)
+                    "Share Device" -> shareDeviceInfo(viewModel)
+                    "Poll", "Code Snippet", "Calendar" -> structuredAttachment = title
+                    else -> attachmentPicker.launch("*/*")
+                }
+            }
+        )
+    }
+
+    structuredAttachment?.let { title ->
+        StructuredAttachmentDialog(
+            title = title,
+            onDismiss = { structuredAttachment = null },
+            onSend = { heading, body ->
+                viewModel.sendMessage(formatStructuredAttachment(title, heading, body))
+                structuredAttachment = null
             }
         )
     }
@@ -495,6 +597,7 @@ private fun ChatHeader(
     isNearbyOnline: Boolean,
     contactEndpoint: String,
     contactOnion: String,
+    livePresenceLabel: String?,
     searchMode: Boolean,
     searchQuery: String,
     searchCountLabel: String,
@@ -507,6 +610,7 @@ private fun ChatHeader(
     onCopy: () -> Unit,
     onReply: () -> Unit,
     onDelete: () -> Unit,
+    onOpenProfile: () -> Unit,
     onVoiceCall: () -> Unit,
     onVideoCall: () -> Unit
 ) {
@@ -541,6 +645,8 @@ private fun ChatHeader(
                         isNearbyOnline = isNearbyOnline,
                         contactEndpoint = contactEndpoint,
                         contactOnion = contactOnion,
+                        livePresenceLabel = livePresenceLabel,
+                        onOpenProfile = onOpenProfile,
                         onSearch = onSearch,
                         onVoiceCall = onVoiceCall,
                         onVideoCall = onVideoCall
@@ -558,6 +664,8 @@ private fun NormalHeader(
     isNearbyOnline: Boolean,
     contactEndpoint: String,
     contactOnion: String,
+    livePresenceLabel: String?,
+    onOpenProfile: () -> Unit,
     onSearch: () -> Unit,
     onVoiceCall: () -> Unit,
     onVideoCall: () -> Unit
@@ -570,6 +678,7 @@ private fun NormalHeader(
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
+                .clickable(onClick = onOpenProfile)
                 .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center
         ) {
@@ -584,6 +693,7 @@ private fun NormalHeader(
         Column(
             modifier = Modifier
                 .weight(1f)
+                .clickable(onClick = onOpenProfile)
                 .padding(end = 4.dp)
         ) {
             Text(
@@ -595,6 +705,7 @@ private fun NormalHeader(
             )
             Text(
                 text = when {
+                    !livePresenceLabel.isNullOrBlank() -> livePresenceLabel
                     isNearbyOnline -> "Bluetooth Relay • Encrypted"
                     contactOnion.isNotBlank() -> "Online • Encrypted"
                     isConnected -> "Mesh Connected • Encrypted"
@@ -683,7 +794,6 @@ private fun MessageTimeline(
     listState: androidx.compose.foundation.lazy.LazyListState,
     selectedIds: Set<String>,
     highlightedId: String?,
-    localReactions: Map<String, String>,
     onSelectToggle: (MessagePayload) -> Unit,
     onReply: (MessagePayload) -> Unit,
     onLongPress: (MessagePayload) -> Unit,
@@ -718,7 +828,6 @@ private fun MessageTimeline(
                     compactWithNext = sameSenderAsNewer,
                     isSelected = selectedIds.contains(message.id),
                     isHighlighted = highlightedId == message.id,
-                    localReaction = localReactions[message.id],
                     topPadding = topGap,
                     onSelectToggle = { onSelectToggle(message) },
                     onReply = { onReply(message) },
@@ -740,7 +849,6 @@ private fun SwipeReplyMessage(
     compactWithNext: Boolean,
     isSelected: Boolean,
     isHighlighted: Boolean,
-    localReaction: String?,
     topPadding: androidx.compose.ui.unit.Dp,
     onSelectToggle: () -> Unit,
     onReply: () -> Unit,
@@ -807,7 +915,6 @@ private fun SwipeReplyMessage(
             compactWithNext = compactWithNext,
             isSelected = isSelected,
             isHighlighted = isHighlighted,
-            localReaction = localReaction,
             onClick = {
                 if (message.lifecycleState == MessageLifecycleState.FAILED) onFailedTap() else onSelectToggle()
             },
@@ -828,7 +935,6 @@ private fun MessageBubble(
     compactWithNext: Boolean,
     isSelected: Boolean,
     isHighlighted: Boolean,
-    localReaction: String?,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
     onReplyClick: (String) -> Unit,
@@ -848,11 +954,12 @@ private fun MessageBubble(
     )
     val textColor = if (isMine) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
     val shape = bubbleShape(isMine, compactWithPrevious, compactWithNext)
-    val reactions = remember(message.reactions, localReaction) {
-        buildMap {
-            message.reactions.values.groupingBy { it }.eachCount().forEach { (emoji, count) -> put(emoji, count) }
-            if (localReaction != null) put(localReaction, (get(localReaction) ?: 0) + 1)
-        }
+    val reactions = remember(message.reactions) {
+        message.reactions.values
+            .flatten()
+            .filter { it.isNotBlank() }
+            .groupingBy { it }
+            .eachCount()
     }
     val pressScale by animateFloatAsState(if (isSelected) 0.98f else 1f, label = "bubbleScale")
 
@@ -887,7 +994,9 @@ private fun MessageBubble(
                     if (message.replyToId != null) {
                         InlineReplyPreview(
                             isMine = isMine,
-                            text = message.replyToText ?: "Original message unavailable",
+                            sender = message.replyToSender.replySenderLabel(isMine),
+                            type = message.replyToType ?: "TEXT",
+                            preview = message.replyToText ?: "Original message unavailable",
                             onClick = { onReplyClick(message.replyToId) }
                         )
                         Spacer(Modifier.height(7.dp))
@@ -936,7 +1045,13 @@ private fun MessageBubble(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun InlineReplyPreview(isMine: Boolean, text: String, onClick: () -> Unit) {
+private fun InlineReplyPreview(
+    isMine: Boolean,
+    sender: String,
+    type: String,
+    preview: String,
+    onClick: () -> Unit
+) {
     val accent = if (isMine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
     Row(
         modifier = Modifier
@@ -955,9 +1070,40 @@ private fun InlineReplyPreview(isMine: Boolean, text: String, onClick: () -> Uni
         )
         Spacer(Modifier.width(8.dp))
         Column {
-            Text("Reply", style = MaterialTheme.typography.labelSmall, color = accent, fontWeight = FontWeight.Bold)
-            Text(text, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(
+                "$sender • ${type.replyTypeLabel()}",
+                style = MaterialTheme.typography.labelSmall,
+                color = accent,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(preview, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
+    }
+}
+
+private fun String?.replySenderLabel(isCurrentMessageMine: Boolean): String {
+    return when (this) {
+        null -> "Original"
+        "me" -> if (isCurrentMessageMine) "You" else "Astra contact"
+        else -> if (isCurrentMessageMine) "Astra contact" else "You"
+    }
+}
+
+private fun String.replyTypeLabel(): String {
+    return when (uppercase()) {
+        "TEXT" -> "Message"
+        "IMAGE" -> "Image"
+        "VIDEO" -> "Video"
+        "AUDIO" -> "Audio"
+        "VOICE" -> "Voice note"
+        "STICKER" -> "Sticker"
+        "GIF" -> "GIF"
+        "DOCUMENT" -> "Document"
+        "CONTACT" -> "Contact"
+        "POLL" -> "Poll"
+        else -> lowercase().replaceFirstChar { it.titlecase() }
     }
 }
 
@@ -969,8 +1115,8 @@ private fun MessageStatusIcon(state: MessageLifecycleState, tint: Color) {
         MessageLifecycleState.ENCRYPTING,
         MessageLifecycleState.SENDING,
         MessageLifecycleState.TRANSPORT_SELECTED,
-        MessageLifecycleState.IN_TRANSIT,
-        MessageLifecycleState.RETRYING -> "\u2713"
+        MessageLifecycleState.RETRYING -> "\u2026"
+        MessageLifecycleState.IN_TRANSIT -> "\u2713"
         MessageLifecycleState.DELIVERED -> "\u2713\u2713"
         MessageLifecycleState.READ -> "\u2713\u2713"
         MessageLifecycleState.FAILED,
@@ -982,7 +1128,13 @@ private fun MessageStatusIcon(state: MessageLifecycleState, tint: Color) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = if (state == MessageLifecycleState.FAILED) MaterialTheme.colorScheme.error else tint,
+            color = when (state) {
+                MessageLifecycleState.FAILED,
+                MessageLifecycleState.CANCELLED,
+                MessageLifecycleState.EXPIRED -> MaterialTheme.colorScheme.error
+                MessageLifecycleState.READ -> MaterialTheme.colorScheme.primary
+                else -> tint
+            },
             fontWeight = FontWeight.Bold
         )
     }
@@ -995,7 +1147,13 @@ private fun ReactionCapsules(reactions: Map<String, Int>, isMine: Boolean) {
         modifier = Modifier.padding(top = 4.dp, start = if (isMine) 0.dp else 8.dp, end = if (isMine) 8.dp else 0.dp)
     ) {
         reactions.forEach { (emoji, count) ->
+            val scale by animateFloatAsState(
+                targetValue = 1f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                label = "reactionCapsule$emoji"
+            )
             Surface(
+                modifier = Modifier.scale(scale),
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 2.dp
@@ -1138,13 +1296,147 @@ private fun ComposerReplyPreview(message: MessagePayload, onCancel: () -> Unit) 
         )
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(if (message.senderId == "me") "Replying to yourself" else "Replying to contact", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            Text(message.text.ifBlank { message.fileName ?: "Attachment" }, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+            Text(
+                if (message.senderId == "me") "Replying to You • ${message.messageType.replyTypeLabel()}" else "Replying to Astra contact • ${message.messageType.replyTypeLabel()}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                message.replyComposerPreview(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
         IconButton(onClick = onCancel) {
             Icon(Icons.Rounded.Close, contentDescription = "Cancel reply")
         }
     }
+}
+
+private fun MessagePayload.replyComposerPreview(): String {
+    val cleanText = text.trim()
+    return when (messageType.uppercase()) {
+        "TEXT" -> cleanText.ifBlank { "Message" }
+        "IMAGE" -> cleanText.ifBlank { fileName?.let { "Image: $it" } ?: "Image" }
+        "VIDEO" -> cleanText.ifBlank { fileName?.let { "Video: $it" } ?: "Video" }
+        "AUDIO" -> cleanText.ifBlank { fileName?.let { "Audio: $it" } ?: "Audio" }
+        "VOICE" -> cleanText.ifBlank { "Voice note" }
+        "STICKER" -> cleanText.ifBlank { "Sticker" }
+        "GIF" -> cleanText.ifBlank { "GIF" }
+        "DOCUMENT" -> cleanText.ifBlank { fileName?.let { "Document: $it" } ?: "Document" }
+        "CONTACT" -> cleanText.ifBlank { "Contact" }
+        "POLL" -> cleanText.ifBlank { "Poll" }
+        else -> cleanText.ifBlank { messageType.replyTypeLabel() }
+    }
+}
+
+@Suppress("MissingPermission")
+private fun sendCurrentLocation(context: Context, viewModel: ChatViewModel) {
+    val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+    val providers = locationManager?.getProviders(true).orEmpty()
+    val location = providers.asSequence()
+        .mapNotNull { provider -> runCatching { locationManager?.getLastKnownLocation(provider) }.getOrNull() }
+        .maxByOrNull { it.time }
+
+    if (location == null) {
+        Toast.makeText(context, "Location unavailable", Toast.LENGTH_SHORT).show()
+        return
+    }
+
+    viewModel.sendMessage(
+        "[Location]\n" +
+            "Latitude: ${"%.6f".format(location.latitude)}\n" +
+            "Longitude: ${"%.6f".format(location.longitude)}\n" +
+            "Accuracy: ${location.accuracy.toInt()} m\n" +
+            "geo:${location.latitude},${location.longitude}"
+    )
+}
+
+private fun shareOwnContact(viewModel: ChatViewModel) {
+    val service = com.astramesh.app.service.AstraMeshService.getInstance()
+    val identity = service?.identityManager?.loadIdentity()
+    if (identity == null) {
+        viewModel.sendMessage("[Contact]\nAstra identity unavailable on this device.")
+        return
+    }
+    val payload = com.astramesh.app.crypto.CryptoManager.createContactString(
+        identity,
+        service.torManager.onionAddress.value.ifBlank { service.identityManager.loadOnionAddress() }
+    )
+    viewModel.sendMessage("[Contact]\n${identity.name}\n$payload")
+}
+
+private fun shareDeviceInfo(viewModel: ChatViewModel) {
+    viewModel.sendMessage(
+        "[Device]\n" +
+            "Android ${Build.VERSION.RELEASE}\n" +
+            "${Build.MANUFACTURER} ${Build.MODEL}\n" +
+            "Astra Mesh secure device share"
+    )
+}
+
+private fun formatStructuredAttachment(type: String, heading: String, body: String): String {
+    val cleanHeading = heading.trim().ifBlank { type }
+    val cleanBody = body.trim()
+    return when (type) {
+        "Poll" -> "[Poll]\n$cleanHeading\nOptions:\n$cleanBody"
+        "Code Snippet" -> "[Code]\n$cleanHeading\n```\n$cleanBody\n```"
+        "Calendar" -> "[Calendar]\n$cleanHeading\n$cleanBody"
+        else -> "[$type]\n$cleanHeading\n$cleanBody"
+    }
+}
+
+@Composable
+private fun StructuredAttachmentDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    onSend: (String, String) -> Unit
+) {
+    var heading by remember(title) { mutableStateOf("") }
+    var body by remember(title) { mutableStateOf("") }
+    val bodyLabel = when (title) {
+        "Poll" -> "Options, one per line"
+        "Code Snippet" -> "Code"
+        "Calendar" -> "Date, time, and notes"
+        else -> "Details"
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = heading,
+                    onValueChange = { heading = it },
+                    label = { Text(if (title == "Poll") "Question" else "Title") },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = body,
+                    onValueChange = { body = it },
+                    label = { Text(bodyLabel) },
+                    minLines = 4
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSend(heading, body) },
+                enabled = heading.isNotBlank() || body.isNotBlank()
+            ) {
+                Text("Send")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1154,6 +1446,7 @@ private fun ReactionDialog(
     onDismiss: () -> Unit,
     onReaction: (String) -> Unit
 ) {
+    var customEmoji by remember { mutableStateOf("") }
     Dialog(onDismissRequest = onDismiss) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Surface(
@@ -1179,6 +1472,36 @@ private fun ReactionDialog(
                                 .combinedClickable(onClick = { onReaction(emoji) })
                                 .padding(5.dp)
                         )
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                tonalElevation = 4.dp,
+                shadowElevation = 8.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = customEmoji,
+                        onValueChange = { customEmoji = it.take(16) },
+                        singleLine = true,
+                        label = { Text("Emoji") },
+                        modifier = Modifier.widthIn(min = 120.dp, max = 180.dp)
+                    )
+                    Button(
+                        onClick = {
+                            val reaction = customEmoji.trim()
+                            if (reaction.isNotBlank()) onReaction(reaction)
+                        },
+                        enabled = customEmoji.isNotBlank()
+                    ) {
+                        Text("Add")
                     }
                 }
             }
@@ -1217,7 +1540,7 @@ private data class AttachmentAction(
 private fun AttachmentSheet(
     onDismiss: () -> Unit,
     onPick: (String) -> Unit,
-    onComingSoon: (String) -> Unit
+    onAction: (String) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val actions = remember {
@@ -1230,9 +1553,9 @@ private fun AttachmentSheet(
             AttachmentAction("Location", "Live location", Icons.Rounded.LocationOn),
             AttachmentAction("Contact", "Share contact", Icons.Rounded.Person),
             AttachmentAction("Poll", "Create poll", Icons.Rounded.Hub),
-            AttachmentAction("GIF", "GIF search", Icons.Rounded.Image),
-            AttachmentAction("Sticker", "Open sticker picker", Icons.Rounded.Person),
-            AttachmentAction("Code Snippet", "Share formatted code", Icons.Rounded.Description, "text/*"),
+            AttachmentAction("GIF", "Choose animated image", Icons.Rounded.Image, "image/*"),
+            AttachmentAction("Sticker", "Choose sticker image", Icons.Rounded.Person, "image/*"),
+            AttachmentAction("Code Snippet", "Share formatted code", Icons.Rounded.Description),
             AttachmentAction("Calendar", "Schedule event", Icons.Rounded.Description),
             AttachmentAction("Share Device", "Nearby device details", Icons.Rounded.Smartphone),
             AttachmentAction("Mesh File", "Offline mesh transfer", Icons.Rounded.Hub, "*/*")
@@ -1267,7 +1590,7 @@ private fun AttachmentSheet(
                             action = action,
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                if (action.mimeType != null) onPick(action.mimeType) else onComingSoon(action.title)
+                                if (action.mimeType != null) onPick(action.mimeType) else onAction(action.title)
                             }
                         )
                     }

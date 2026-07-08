@@ -166,9 +166,6 @@ class MainActivity : ComponentActivity() {
                         val openChatKey = intent.getStringExtra("open_chat")
                         if (openChatKey != null) {
                             com.astramesh.app.service.NotificationHelper.clearContactNotifications(this@MainActivity, openChatKey)
-                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                service.db.messageDao().markMessagesAsRead(openChatKey)
-                            }
                             navController.navigate("chat/$openChatKey")
                         }
                     }
@@ -254,6 +251,15 @@ class MainActivity : ComponentActivity() {
                                 nearbyManager = service.nearbyManager,
                                 messageRouter = service.messageRouter,
                                 mediaTransferManager = service.mediaTransferManager
+                            )
+                        }
+                        composable("contact_profile/{contactKey}") { backStackEntry ->
+                            val contactKey = backStackEntry.arguments?.getString("contactKey")
+                                ?: return@composable
+                            com.astramesh.app.ui.screens.ContactProfileScreen(
+                                navController = navController,
+                                contactKey = contactKey,
+                                db = service.db
                             )
                         }
                         composable("settings") {

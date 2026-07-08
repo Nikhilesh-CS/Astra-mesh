@@ -37,6 +37,8 @@ data class MessagePayload(
     val retryCount: Int = 0,
     val replyToId: String? = null,
     val replyToText: String? = null,
+    val replyToSender: String? = null,
+    val replyToType: String? = null,
     val hasAttachments: Boolean = false,
     val messageType: String = "TEXT",
     val fileName: String? = null,
@@ -45,7 +47,7 @@ data class MessagePayload(
     val localUri: String? = null,
     val thumbnailUri: String? = null,
     val transferProgress: Int? = null,
-    val reactions: Map<String, String> = emptyMap() // Map of senderKey -> Emoji
+    val reactions: Map<String, List<String>> = emptyMap() // Map of senderKey -> emojis
 )
 
 /**

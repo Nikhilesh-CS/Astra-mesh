@@ -6,6 +6,7 @@ import com.astramesh.app.crypto.Identity
 import com.astramesh.app.data.AppDatabase
 import com.astramesh.app.data.ContactEntity
 import com.astramesh.app.data.MessageEntity
+import com.astramesh.app.data.ReactionOutboxEntity
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.util.UUID
@@ -54,12 +55,14 @@ class MessageRouter(
             MeshProtocol.TYPE_CALL_OFFER,
             MeshProtocol.TYPE_CALL_ANSWER,
             MeshProtocol.TYPE_ICE_CANDIDATE,
+            MeshProtocol.TYPE_REACTION,
+            MeshProtocol.TYPE_PRESENCE,
             MeshProtocol.TYPE_PROFILE_UPDATE,
             MeshProtocol.TYPE_REQUEST_PROFILE_PHOTO,
             MeshProtocol.TYPE_PROFILE_PHOTO_CHUNK -> scope.launch(Dispatchers.IO) { handleEncrypted(json, endpointId, json.optString("type")) }
             MeshProtocol.TYPE_RELAY -> scope.launch(Dispatchers.IO) { handleRelay(endpointId, json) }
-            MeshProtocol.TYPE_ACK -> scope.launch(Dispatchers.IO) { handleAck(json) }
-            MeshProtocol.TYPE_READ -> scope.launch(Dispatchers.IO) { handleRead(json) }
+            MeshProtocol.TYPE_ACK -> scope.launch(Dispatchers.IO) { handleAck(json, endpointId) }
+            MeshProtocol.TYPE_READ -> scope.launch(Dispatchers.IO) { handleRead(json, endpointId) }
             MeshProtocol.TYPE_PING -> handlePing(json, endpointId)
             MeshProtocol.TYPE_PONG -> handlePong(json)
         }
@@ -77,12 +80,14 @@ class MessageRouter(
             MeshProtocol.TYPE_CALL_OFFER,
             MeshProtocol.TYPE_CALL_ANSWER,
             MeshProtocol.TYPE_ICE_CANDIDATE,
+            MeshProtocol.TYPE_REACTION,
+            MeshProtocol.TYPE_PRESENCE,
             MeshProtocol.TYPE_PROFILE_UPDATE,
             MeshProtocol.TYPE_REQUEST_PROFILE_PHOTO,
             MeshProtocol.TYPE_PROFILE_PHOTO_CHUNK -> scope.launch(Dispatchers.IO) { handleEncrypted(json, null, json.optString("type")) }
             MeshProtocol.TYPE_RELAY -> scope.launch(Dispatchers.IO) { handleRelay(null, json) }
-            MeshProtocol.TYPE_ACK -> scope.launch(Dispatchers.IO) { handleAck(json) }
-            MeshProtocol.TYPE_READ -> scope.launch(Dispatchers.IO) { handleRead(json) }
+            MeshProtocol.TYPE_ACK -> scope.launch(Dispatchers.IO) { handleAck(json, null) }
+            MeshProtocol.TYPE_READ -> scope.launch(Dispatchers.IO) { handleRead(json, null) }
             MeshProtocol.TYPE_PING -> handlePing(json, null)
             MeshProtocol.TYPE_PONG -> handlePong(json)
         }
@@ -118,7 +123,9 @@ class MessageRouter(
         contactKey: String,
         text: String,
         replyToId: String? = null,
-        replyToText: String? = null
+        replyToText: String? = null,
+        replyToSender: String? = null,
+        replyToType: String? = null
     ): SendResult = withContext(Dispatchers.IO) {
         val identity = identity ?: return@withContext SendResult(false, Transport.FAILED, "Not logged in")
         val contact = db.contactDao().getContact(contactKey)
@@ -128,7 +135,15 @@ class MessageRouter(
             return@withContext SendResult(false, Transport.FAILED, "Missing encryption key")
         }
 
-        val payload = buildEncryptedPayload(identity, contact, text)
+        val wireText = encodeChatMessagePayload(
+            text = text,
+            replyToId = replyToId,
+            replyToText = replyToText,
+            replyToSender = replyToSender,
+            replyToType = replyToType
+        )
+
+        val payload = buildEncryptedPayload(identity, contact, wireText)
             ?: return@withContext SendResult(false, Transport.FAILED, "Encryption failed")
 
         val messageId = UUID.randomUUID().toString()
@@ -143,7 +158,9 @@ class MessageRouter(
                 direction = "sent",
                 status = "pending",
                 replyToId = replyToId,
-                replyToText = replyToText
+                replyToText = replyToText,
+                replyToSender = replyToSender,
+                replyToType = replyToType
             )
         )
         Log.d(TAG, "[SEND] Message $messageId queued for $contactKey")
@@ -239,6 +256,38 @@ class MessageRouter(
         attemptDelivery(contact, payload, messageId, messageType)
     }
 
+    suspend fun toggleReaction(contactKey: String, targetMessageId: String, emoji: String): SendResult = withContext(Dispatchers.IO) {
+        val actorKey = mySigningKeyHex.ifBlank {
+            identity?.signingPublicKey?.let { CryptoManager.toHex(it) }.orEmpty()
+        }
+        if (actorKey.isBlank()) return@withContext SendResult(false, Transport.FAILED, "Not logged in")
+        if (emoji.isBlank()) return@withContext SendResult(false, Transport.FAILED, "Reaction is blank")
+
+        val target = db.messageDao().getMessageById(targetMessageId)
+            ?: return@withContext SendResult(false, Transport.FAILED, "Message not found")
+
+        val current = parseReactionMap(target.reactionsJson)
+        val mine = current[actorKey]?.toSet() ?: emptySet()
+        val action = if (mine.contains(emoji)) "remove" else "add"
+        applyReactionToMessage(targetMessageId, actorKey, emoji, action)
+
+        val reaction = ReactionOutboxEntity(
+            reactionId = UUID.randomUUID().toString(),
+            contactKey = contactKey,
+            targetMessageId = targetMessageId,
+            emoji = emoji,
+            action = action,
+            createdAt = System.currentTimeMillis()
+        )
+
+        val result = sendReactionPacket(reaction)
+        if (!result.success) {
+            db.reactionOutboxDao().insertReaction(reaction)
+            ensureRetryLoopRunning()
+        }
+        result
+    }
+
     // ──────────────────────── RETRY LOOP ────────────────────────
 
     fun ensureRetryLoopRunning() {
@@ -258,18 +307,28 @@ class MessageRouter(
 
     private suspend fun retryPendingMessages() {
         val pending = db.messageDao().getPendingMessages()
-        if (pending.isEmpty()) {
+        val pendingReactions = db.reactionOutboxDao().getPendingReactions()
+        if (pending.isEmpty() && pendingReactions.isEmpty()) {
             Log.d(TAG, "[RETRY] No pending messages, stopping retry loop")
             retryJob?.cancel()
             return
         }
+
+        retryPendingReactions(pendingReactions)
 
         Log.d(TAG, "[RETRY] Retrying ${pending.size} pending messages")
         for (msg in pending) {
             val identity = identity ?: continue
             val contact = db.contactDao().getContact(msg.contactKey) ?: continue
 
-            val payload = buildEncryptedPayload(identity, contact, msg.text) ?: continue
+            val wireText = encodeChatMessagePayload(
+                text = msg.text,
+                replyToId = msg.replyToId,
+                replyToText = msg.replyToText,
+                replyToSender = msg.replyToSender,
+                replyToType = msg.replyToType
+            )
+            val payload = buildEncryptedPayload(identity, contact, wireText) ?: continue
             val result = attemptDelivery(contact, payload, msg.messageId)
 
             if (result.success) {
@@ -287,9 +346,24 @@ class MessageRouter(
         }
     }
 
+    private suspend fun retryPendingReactions(pending: List<ReactionOutboxEntity>) {
+        if (pending.isEmpty()) return
+        Log.d(TAG, "[RETRY] Retrying ${pending.size} pending reactions")
+        pending.forEach { reaction ->
+            val result = sendReactionPacket(reaction)
+            if (result.success) {
+                db.reactionOutboxDao().deleteReaction(reaction.reactionId)
+            } else {
+                db.reactionOutboxDao().incrementRetry(reaction.reactionId)
+            }
+        }
+    }
+
     // ──────────────────────── ACK HANDLING ────────────────────────
 
-    private suspend fun handleAck(json: JSONObject) {
+    private suspend fun handleAck(json: JSONObject, viaEndpoint: String?) {
+        if (forwardReceiptIfNeeded(json, viaEndpoint)) return
+
         val messageId = json.optString("msgId")
         val senderKey = json.optString("from", "").trim().lowercase()
         if (messageId.isBlank()) return
@@ -318,12 +392,18 @@ class MessageRouter(
 
     private fun sendAck(messageId: String, senderKey: String, viaEndpoint: String?, senderOnion: String? = null) {
         if (messageId.isBlank()) return
-        val ackWire = MeshProtocol.encodeAck(messageId, mySigningKeyHex, myOnionAddress)
+        val ackWire = MeshProtocol.encodeAck(messageId, mySigningKeyHex, senderKey, myOnionAddress)
         Log.d(TAG, "[ACK] Sending ACK for $messageId to $senderKey (viaEndpoint=$viaEndpoint, senderOnion=${senderOnion?.take(20)})")
+        val contact = db.contactDao().getContact(senderKey)
+        val connected = nearbyManager.connectedEndpoints.value
 
         // Send ACK back via the same transport it arrived on
-        if (viaEndpoint != null) {
+        if (contact?.endpointId?.isNotBlank() == true && connected.contains(contact.endpointId)) {
+            nearbyManager.sendRaw(contact.endpointId, ackWire)
+        } else if (viaEndpoint != null) {
             nearbyManager.sendRaw(viaEndpoint, ackWire)
+        } else if (connected.isNotEmpty()) {
+            connected.forEach { nearbyManager.sendRaw(it, ackWire) }
         } else {
             // Came via Tor — send ACK back via Tor
             scope.launch(Dispatchers.IO) {
@@ -332,8 +412,6 @@ class MessageRouter(
                     val onion = if (!senderOnion.isNullOrBlank()) {
                         senderOnion
                     } else {
-                        // Fallback: look up from DB
-                        val contact = db.contactDao().getContact(senderKey)
                         contact?.onionAddress
                     }
                     if (!onion.isNullOrBlank() && torManager.isTorReady.value) {
@@ -349,7 +427,9 @@ class MessageRouter(
         }
     }
 
-    private suspend fun handleRead(json: JSONObject) {
+    private suspend fun handleRead(json: JSONObject, viaEndpoint: String?) {
+        if (forwardReceiptIfNeeded(json, viaEndpoint)) return
+
         val messageId = json.optString("msgId")
         val senderKey = json.optString("from", "").trim().lowercase()
         if (messageId.isBlank()) return
@@ -377,7 +457,7 @@ class MessageRouter(
 
     fun sendReadReceipt(messageId: String, senderKey: String) {
         if (messageId.isBlank()) return
-        val readWire = MeshProtocol.encodeRead(messageId, mySigningKeyHex, myOnionAddress)
+        val readWire = MeshProtocol.encodeRead(messageId, mySigningKeyHex, senderKey, myOnionAddress)
         Log.d(TAG, "[READ] Sending READ receipt for $messageId to $senderKey")
 
         scope.launch(Dispatchers.IO) {
@@ -387,6 +467,8 @@ class MessageRouter(
                 
                 if (contact.endpointId.isNotEmpty() && connected.contains(contact.endpointId)) {
                     nearbyManager.sendRaw(contact.endpointId, readWire)
+                } else if (connected.isNotEmpty()) {
+                    connected.forEach { nearbyManager.sendRaw(it, readWire) }
                 } else {
                     val onion = contact.onionAddress
                     if (!onion.isNullOrBlank() && torManager.isTorReady.value) {
@@ -399,9 +481,25 @@ class MessageRouter(
         }
     }
 
+    private fun forwardReceiptIfNeeded(json: JSONObject, viaEndpoint: String?): Boolean {
+        val destination = json.optString("to", "").trim().lowercase()
+        if (destination.isBlank() || destination == mySigningKeyHex) return false
+
+        val ttl = json.optInt("ttl", MeshProtocol.DEFAULT_TTL)
+        if (ttl <= 1) return true
+
+        val forwarded = JSONObject(json.toString())
+            .put("ttl", ttl - 1)
+            .toString()
+        nearbyManager.connectedEndpoints.value
+            .filter { it != viaEndpoint }
+            .forEach { nearbyManager.sendRaw(it, forwarded) }
+        return true
+    }
+
     fun sendMediaAck(messageId: String, senderKey: String) {
         if (messageId.isBlank()) return
-        val ackWire = MeshProtocol.encodeAck(messageId, mySigningKeyHex, myOnionAddress)
+        val ackWire = MeshProtocol.encodeAck(messageId, mySigningKeyHex, senderKey, myOnionAddress)
         Log.d(TAG, "[MEDIA_ACK] Sending ACK for $messageId to $senderKey")
 
         scope.launch(Dispatchers.IO) {
@@ -558,29 +656,53 @@ class MessageRouter(
             return
         }
 
-        Log.d(TAG, "[RECV] Message from ${contact.name} (${plaintext.length} chars)")
+        if (messageType == MeshProtocol.TYPE_REACTION) {
+            handleReactionPacket(plaintext, senderKey)
+            return
+        }
+
+        if (messageType == MeshProtocol.TYPE_PRESENCE) {
+            val service = com.astramesh.app.service.AstraMeshService.getInstance()
+            service?.presenceManager?.handlePresencePacket(plaintext, senderKey)
+            return
+        }
+
+        val chatPayload = decodeChatMessagePayload(plaintext)
+
+        Log.d(TAG, "[RECV] Message from ${contact.name} (${chatPayload.text.length} chars)")
 
         if (messageId.isNotBlank() && db.messageDao().getMessageById(messageId) != null) {
             Log.d(TAG, "[RECV] Duplicate message ignored: $messageId")
             sendAck(messageId, senderKey, viaEndpoint, senderOnion)
+            if (com.astramesh.app.service.ActiveConversationTracker.isActive(senderKey)) {
+                sendReadReceipt(messageId, senderKey)
+            }
             return
         }
+
+        val isActiveConversation = com.astramesh.app.service.ActiveConversationTracker.isActive(senderKey)
 
         db.messageDao().insertMessage(
             MessageEntity(
                 messageId = if (messageId.isNotBlank()) messageId else UUID.randomUUID().toString(),
                 contactKey = senderKey,
-                text = plaintext,
+                text = chatPayload.text,
                 timestamp = System.currentTimeMillis(),
                 direction = "received",
-                status = "delivered"
+                status = if (isActiveConversation) "read" else "delivered",
+                replyToId = chatPayload.replyToId,
+                replyToText = chatPayload.replyToText,
+                replyToSender = chatPayload.replyToSender,
+                replyToType = chatPayload.replyToType
             )
         )
 
         val service = com.astramesh.app.service.AstraMeshService.getInstance()
         if (service != null) {
             val isMuted = contact.muteUntil == -1L || (contact.muteUntil > 0L && System.currentTimeMillis() < contact.muteUntil)
-            if (!isMuted) {
+            if (isActiveConversation) {
+                com.astramesh.app.service.NotificationHelper.clearContactNotifications(service, senderKey)
+            } else if (!isMuted) {
                 val unreadMsgs = db.messageDao().getUnreadMessagesSync(senderKey)
                 com.astramesh.app.service.NotificationHelper.showMessageNotification(service, contact, unreadMsgs)
             }
@@ -589,6 +711,9 @@ class MessageRouter(
         // Send ACK back to sender
         if (messageId.isNotBlank()) {
             sendAck(messageId, senderKey, viaEndpoint, senderOnion)
+            if (isActiveConversation) {
+                sendReadReceipt(messageId, senderKey)
+            }
         }
     }
 
@@ -616,6 +741,136 @@ class MessageRouter(
         } catch (e: Exception) {
             Log.e(TAG, "[CRYPTO] buildEncryptedPayload failed", e)
             null
+        }
+    }
+
+    private suspend fun sendReactionPacket(reaction: ReactionOutboxEntity): SendResult {
+        val actorKey = mySigningKeyHex.ifBlank {
+            identity?.signingPublicKey?.let { CryptoManager.toHex(it) }.orEmpty()
+        }
+        val payload = JSONObject()
+            .put("astraType", "reaction")
+            .put("version", 1)
+            .put("reactionId", reaction.reactionId)
+            .put("targetMessageId", reaction.targetMessageId)
+            .put("emoji", reaction.emoji)
+            .put("action", reaction.action)
+            .put("actorKey", actorKey)
+            .put("createdAt", reaction.createdAt)
+            .toString()
+        return sendRawPayload(reaction.contactKey, payload, MeshProtocol.TYPE_REACTION)
+    }
+
+    private fun handleReactionPacket(raw: String, senderKey: String) {
+        runCatching {
+            val json = JSONObject(raw)
+            val targetMessageId = json.getString("targetMessageId")
+            val emoji = json.getString("emoji")
+            val action = json.optString("action", "add")
+            applyReactionToMessage(targetMessageId, senderKey, emoji, action)
+        }.onFailure { e ->
+            Log.w(TAG, "Invalid reaction packet", e)
+        }
+    }
+
+    private fun applyReactionToMessage(messageId: String, actorKey: String, emoji: String, action: String) {
+        if (messageId.isBlank() || actorKey.isBlank() || emoji.isBlank()) return
+        val message = db.messageDao().getMessageById(messageId) ?: return
+        val reactions = parseReactionMap(message.reactionsJson)
+        val actorReactions = reactions[actorKey]?.toMutableSet() ?: linkedSetOf()
+        when (action) {
+            "remove" -> actorReactions.remove(emoji)
+            "set" -> {
+                actorReactions.clear()
+                actorReactions.add(emoji)
+            }
+            else -> actorReactions.add(emoji)
+        }
+
+        if (actorReactions.isEmpty()) {
+            reactions.remove(actorKey)
+        } else {
+            reactions[actorKey] = actorReactions.toList()
+        }
+        db.messageDao().updateReactions(messageId, encodeReactionMap(reactions))
+    }
+
+    private fun parseReactionMap(raw: String?): MutableMap<String, List<String>> {
+        val result = linkedMapOf<String, List<String>>()
+        if (raw.isNullOrBlank()) return result
+        return runCatching {
+            val json = JSONObject(raw)
+            json.keys().forEach { actor ->
+                val value = json.get(actor)
+                result[actor] = when (value) {
+                    is org.json.JSONArray -> List(value.length()) { index -> value.optString(index) }
+                        .filter { it.isNotBlank() }
+                    is String -> listOf(value).filter { it.isNotBlank() }
+                    else -> emptyList()
+                }
+            }
+            result
+        }.getOrElse { result }
+    }
+
+    private fun encodeReactionMap(reactions: Map<String, List<String>>): String? {
+        if (reactions.isEmpty()) return null
+        val json = JSONObject()
+        reactions.forEach { (actor, emojis) ->
+            val array = org.json.JSONArray()
+            emojis.distinct().filter { it.isNotBlank() }.forEach { array.put(it) }
+            if (array.length() > 0) json.put(actor, array)
+        }
+        return if (json.length() == 0) null else json.toString()
+    }
+
+    private data class ChatMessagePayload(
+        val text: String,
+        val replyToId: String? = null,
+        val replyToText: String? = null,
+        val replyToSender: String? = null,
+        val replyToType: String? = null
+    )
+
+    private fun encodeChatMessagePayload(
+        text: String,
+        replyToId: String?,
+        replyToText: String?,
+        replyToSender: String?,
+        replyToType: String?
+    ): String {
+        if (replyToId.isNullOrBlank()) return text
+        return JSONObject()
+            .put("astraType", "chat_message")
+            .put("version", 1)
+            .put("text", text)
+            .put(
+                "reply",
+                JSONObject()
+                    .put("originalMessageId", replyToId)
+                    .put("originalSender", replyToSender ?: "")
+                    .put("originalType", replyToType ?: "TEXT")
+                    .put("originalPreview", replyToText ?: "")
+            )
+            .toString()
+    }
+
+    private fun decodeChatMessagePayload(raw: String): ChatMessagePayload {
+        return runCatching {
+            val json = JSONObject(raw)
+            if (json.optString("astraType") != "chat_message") {
+                return@runCatching ChatMessagePayload(raw)
+            }
+            val reply = json.optJSONObject("reply")
+            ChatMessagePayload(
+                text = json.optString("text", ""),
+                replyToId = reply?.optString("originalMessageId")?.takeIf { it.isNotBlank() },
+                replyToSender = reply?.optString("originalSender")?.takeIf { it.isNotBlank() },
+                replyToType = reply?.optString("originalType")?.takeIf { it.isNotBlank() },
+                replyToText = reply?.optString("originalPreview")?.takeIf { it.isNotBlank() }
+            )
+        }.getOrElse {
+            ChatMessagePayload(raw)
         }
     }
 

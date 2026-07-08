@@ -38,6 +38,8 @@ data class MessageEntity(
     val status: String = "pending", // pending, sent, delivered, failed
     val replyToId: String? = null,
     val replyToText: String? = null,
+    val replyToSender: String? = null,
+    val replyToType: String? = null,
     val retryCount: Int = 0,
     val transport: String? = null,
     
@@ -113,6 +115,10 @@ interface MessageDao {
     fun getUnreadMessagesSync(contactKey: String): List<MessageEntity>
 
     @Transaction
+    @Query("SELECT * FROM messages WHERE contactKey = :contactKey ORDER BY timestamp ASC")
+    fun getMessagesForContactSync(contactKey: String): List<MessageEntity>
+
+    @Transaction
     @Query("SELECT * FROM messages WHERE contactKey = :contactKey AND text LIKE '%' || :query || '%' ORDER BY timestamp DESC")
     fun searchMessages(contactKey: String, query: String): Flow<List<MessageEntity>>
 
@@ -128,11 +134,25 @@ interface MessageDao {
     @Query("UPDATE messages SET status = :status, localUri = :localUri, transferProgress = 100 WHERE messageId = :messageId")
     fun markMediaDelivered(messageId: String, status: String, localUri: String)
 
-    @Query("UPDATE messages SET status = :status, transport = :transport WHERE messageId = :messageId AND contactKey = :contactKey AND direction = 'sent'")
+    @Query("""
+        UPDATE messages
+        SET status = CASE
+            WHEN status = 'read' THEN status
+            WHEN :status = 'read' THEN 'read'
+            WHEN status = 'delivered' AND :status IN ('pending', 'sent') THEN status
+            WHEN status = 'sent' AND :status = 'pending' THEN status
+            ELSE :status
+        END,
+        transport = COALESCE(:transport, transport)
+        WHERE messageId = :messageId AND contactKey = :contactKey AND direction = 'sent'
+    """)
     fun updateSentMessageStatus(messageId: String, contactKey: String, status: String, transport: String? = null): Int
 
     @Query("UPDATE messages SET status = 'read' WHERE contactKey = :contactKey AND direction = 'received' AND status != 'read'")
     fun markMessagesAsRead(contactKey: String)
+
+    @Query("UPDATE messages SET reactionsJson = :reactionsJson WHERE messageId = :messageId")
+    fun updateReactions(messageId: String, reactionsJson: String?)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertMessage(message: MessageEntity)
@@ -174,16 +194,42 @@ interface ConnectionRequestDao {
     fun deleteRequest(endpointId: String)
 }
 
+@Dao
+interface ReactionOutboxDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertReaction(reaction: ReactionOutboxEntity)
+
+    @Query("SELECT * FROM reaction_outbox WHERE retryCount < 20 ORDER BY createdAt ASC")
+    fun getPendingReactions(): List<ReactionOutboxEntity>
+
+    @Query("DELETE FROM reaction_outbox WHERE reactionId = :reactionId")
+    fun deleteReaction(reactionId: String)
+
+    @Query("UPDATE reaction_outbox SET retryCount = retryCount + 1 WHERE reactionId = :reactionId")
+    fun incrementRetry(reactionId: String)
+}
+
+@Entity(tableName = "reaction_outbox")
+data class ReactionOutboxEntity(
+    @PrimaryKey val reactionId: String,
+    val contactKey: String,
+    val targetMessageId: String,
+    val emoji: String,
+    val action: String,
+    val createdAt: Long,
+    val retryCount: Int = 0
+)
 
 @Database(
-    entities = [ContactEntity::class, MessageEntity::class, ConnectionRequestEntity::class, MediaTransferEntity::class, ProfileEntity::class],
-    version = 9,
+    entities = [ContactEntity::class, MessageEntity::class, ConnectionRequestEntity::class, ReactionOutboxEntity::class, MediaTransferEntity::class, ProfileEntity::class],
+    version = 11,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun contactDao(): ContactDao
     abstract fun messageDao(): MessageDao
     abstract fun connectionRequestDao(): ConnectionRequestDao
+    abstract fun reactionOutboxDao(): ReactionOutboxDao
     abstract fun mediaTransferDao(): MediaTransferDao
     abstract fun profileDao(): ProfileDao
 
@@ -315,6 +361,30 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent())
                     db.execSQL("DROP TABLE profiles_legacy")
                 }
+            }
+        }
+
+        val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE messages ADD COLUMN replyToSender TEXT")
+                db.execSQL("ALTER TABLE messages ADD COLUMN replyToType TEXT")
+            }
+        }
+
+        val MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `reaction_outbox` (
+                        `reactionId` TEXT NOT NULL,
+                        `contactKey` TEXT NOT NULL,
+                        `targetMessageId` TEXT NOT NULL,
+                        `emoji` TEXT NOT NULL,
+                        `action` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `retryCount` INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY(`reactionId`)
+                    )
+                """.trimIndent())
             }
         }
     }

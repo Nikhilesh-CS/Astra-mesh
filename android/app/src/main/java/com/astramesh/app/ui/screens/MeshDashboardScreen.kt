@@ -9,7 +9,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,6 +28,8 @@ import kotlin.random.Random
 fun MeshDashboardScreen(
     onNavigateBack: () -> Unit
 ) {
+    var showAdvancedTopology by remember { mutableStateOf(false) }
+
     Scaffold(
         containerColor = AstraTheme.colors.background,
         topBar = {
@@ -49,34 +54,67 @@ fun MeshDashboardScreen(
                 .padding(AstraTheme.spacing.medium),
             verticalArrangement = Arrangement.spacedBy(AstraTheme.spacing.medium)
         ) {
-            // Stats Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(AstraTheme.spacing.medium)
             ) {
-                StatCard(Modifier.weight(1f), "Active Peers", "14", Icons.Rounded.People, AstraTheme.colors.primary)
-                StatCard(Modifier.weight(1f), "Tor Nodes", "3", Icons.Rounded.Security, AstraTheme.colors.secondary)
+                StatCard(Modifier.weight(1f), "Connection Quality", "Strong", Icons.Rounded.SignalCellularAlt, AstraTheme.colors.primary)
+                StatCard(Modifier.weight(1f), "Current Route", "Mesh + Tor", Icons.Rounded.Route, AstraTheme.colors.secondary)
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(AstraTheme.spacing.medium)
             ) {
-                StatCard(Modifier.weight(1f), "Data Relayed", "42.5 MB", Icons.Rounded.DataUsage, AstraTheme.colors.primary)
-                StatCard(Modifier.weight(1f), "Packet Drops", "0.01%", Icons.Rounded.Warning, Color(0xFFF59E0B))
+                StatCard(Modifier.weight(1f), "Encryption Status", "Protected", Icons.Rounded.Lock, AstraTheme.colors.primary)
+                StatCard(Modifier.weight(1f), "Privacy Level", "High", Icons.Rounded.Shield, Color(0xFFF59E0B))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AstraTheme.spacing.medium)
+            ) {
+                StatCard(Modifier.weight(1f), "Relay Availability", "Available", Icons.Rounded.Hub, AstraTheme.colors.primary)
+                StatCard(Modifier.weight(1f), "Internet Status", "Ready", Icons.Rounded.Public, AstraTheme.colors.secondary)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AstraTheme.spacing.medium)
+            ) {
+                StatCard(Modifier.weight(1f), "Transfer Speed", "Adaptive", Icons.Rounded.Speed, AstraTheme.colors.primary)
+                StatCard(Modifier.weight(1f), "Latency", "Optimizing", Icons.Rounded.Timeline, AstraTheme.colors.secondary)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AstraTheme.spacing.medium)
+            ) {
+                StatCard(Modifier.weight(1f), "Nearby Devices", "Scanning", Icons.Rounded.People, AstraTheme.colors.primary)
+                StatCard(Modifier.weight(1f), "Mesh Strength", "Healthy", Icons.Rounded.Share, AstraTheme.colors.secondary)
             }
 
             Spacer(modifier = Modifier.height(AstraTheme.spacing.medium))
 
-            // Topology Graph
-            Text("Live Topology Map", style = AstraTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AstraTheme.colors.onSurface)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .clip(RoundedCornerShape(AstraTheme.spacing.medium))
-                    .background(Color.Black.copy(alpha = 0.2f))
-            ) {
-                MeshTopologyCanvas()
+            ListItem(
+                headlineContent = { Text("Advanced topology") },
+                supportingContent = { Text("Developer mode network graph") },
+                leadingContent = { Icon(Icons.Rounded.AccountTree, contentDescription = null) },
+                trailingContent = {
+                    Switch(checked = showAdvancedTopology, onCheckedChange = { showAdvancedTopology = it })
+                },
+                colors = ListItemDefaults.colors(containerColor = AstraTheme.colors.surface)
+            )
+
+            if (showAdvancedTopology) {
+                Text("Live Topology Map", style = AstraTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AstraTheme.colors.onSurface)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(AstraTheme.spacing.medium))
+                        .background(Color.Black.copy(alpha = 0.2f))
+                ) {
+                    MeshTopologyCanvas()
+                }
+            } else {
+                Spacer(modifier = Modifier.weight(1f))
             }
         }
     }

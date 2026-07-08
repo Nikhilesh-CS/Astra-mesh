@@ -65,24 +65,34 @@ class ChatViewModel(
                         else -> TransportType.AUTO
                     }
                     val lifecycle = when (entity.status) {
+                        "pending" -> MessageLifecycleState.QUEUED
+                        "queued" -> MessageLifecycleState.QUEUED
+                        "sending" -> MessageLifecycleState.SENDING
                         "sent" -> MessageLifecycleState.IN_TRANSIT
                         "delivered" -> MessageLifecycleState.DELIVERED
                         "read" -> MessageLifecycleState.READ
+                        "receiving" -> MessageLifecycleState.IN_TRANSIT
                         "failed" -> MessageLifecycleState.FAILED
-                        else -> MessageLifecycleState.DELIVERED
+                        else -> MessageLifecycleState.QUEUED
                     }
                     
                     val reactionsMap = try {
-                        val map = mutableMapOf<String, String>()
+                        val map = mutableMapOf<String, List<String>>()
                         if (!entity.reactionsJson.isNullOrBlank()) {
                             val json = org.json.JSONObject(entity.reactionsJson)
                             for (key in json.keys()) {
-                                map[key] = json.getString(key)
+                                val value = json.get(key)
+                                map[key] = when (value) {
+                                    is org.json.JSONArray -> List(value.length()) { index -> value.optString(index) }
+                                        .filter { it.isNotBlank() }
+                                    is String -> listOf(value).filter { it.isNotBlank() }
+                                    else -> emptyList()
+                                }
                             }
                         }
                         map
                     } catch (e: Exception) {
-                        emptyMap<String, String>()
+                        emptyMap<String, List<String>>()
                     }
 
                     val inferredMessageType = when {
@@ -114,6 +124,8 @@ class ChatViewModel(
                         transportType = transport,
                         replyToId = entity.replyToId,
                         replyToText = entity.replyToText,
+                        replyToSender = entity.replyToSender,
+                        replyToType = entity.replyToType,
                         hasAttachments = hasMediaPayload,
                         messageType = inferredMessageType,
                         fileName = entity.fileName,
@@ -144,11 +156,26 @@ class ChatViewModel(
 
     fun sendMessage(text: String, replyToId: String? = null) {
         viewModelScope.launch {
-            val replyToText = replyToId?.let { id ->
-                conversationEngine.messages.value.firstOrNull { it.id == id }?.text
+            val replyTarget = replyToId?.let { id ->
+                conversationEngine.messages.value.firstOrNull { it.id == id }
             }
-            val result = messageRouter.sendMessage(contactKey, text, replyToId, replyToText)
+            val result = messageRouter.sendMessage(
+                contactKey = contactKey,
+                text = text,
+                replyToId = replyTarget?.id,
+                replyToText = replyTarget?.replyPreviewText(),
+                replyToSender = replyTarget?.senderId,
+                replyToType = replyTarget?.messageType
+            )
             // The DB observation will pick up the new message and feed it to conversationEngine
+        }
+    }
+
+    fun toggleReaction(messageId: String, emoji: String) {
+        val cleanEmoji = emoji.trim()
+        if (messageId.isBlank() || cleanEmoji.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            messageRouter.toggleReaction(contactKey, messageId, cleanEmoji)
         }
     }
 
@@ -157,6 +184,23 @@ class ChatViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             messageIds.forEach { db.messageDao().deleteMessage(it) }
         }
+    }
+}
+
+private fun MessagePayload.replyPreviewText(): String {
+    val cleanText = text.trim()
+    return when (messageType.uppercase()) {
+        "TEXT" -> cleanText.ifBlank { "Message" }
+        "IMAGE" -> cleanText.ifBlank { fileName?.let { "Image: $it" } ?: "Image" }
+        "VIDEO" -> cleanText.ifBlank { fileName?.let { "Video: $it" } ?: "Video" }
+        "AUDIO" -> cleanText.ifBlank { fileName?.let { "Audio: $it" } ?: "Audio" }
+        "VOICE" -> cleanText.ifBlank { "Voice note" }
+        "STICKER" -> cleanText.ifBlank { "Sticker" }
+        "GIF" -> cleanText.ifBlank { "GIF" }
+        "DOCUMENT" -> cleanText.ifBlank { fileName?.let { "Document: $it" } ?: "Document" }
+        "CONTACT" -> cleanText.ifBlank { "Contact" }
+        "POLL" -> cleanText.ifBlank { "Poll" }
+        else -> cleanText.ifBlank { messageType.lowercase().replaceFirstChar { it.titlecase() } }
     }
 }
 
