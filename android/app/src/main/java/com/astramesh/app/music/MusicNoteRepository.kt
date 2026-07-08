@@ -11,6 +11,7 @@ interface MusicNoteRepository {
     fun observeActiveNotes(): Flow<List<MusicNoteEntity>>
     suspend fun saveNote(note: MusicNoteEntity)
     suspend fun removeNote(noteId: String)
+    suspend fun removeNotesByAuthor(authorPublicKey: String)
     suspend fun pruneExpired()
 }
 
@@ -30,6 +31,12 @@ class MusicNoteRepositoryImpl(
     override suspend fun removeNote(noteId: String) {
         withContext(Dispatchers.IO) {
             dao.deleteNote(noteId)
+        }
+    }
+
+    override suspend fun removeNotesByAuthor(authorPublicKey: String) {
+        withContext(Dispatchers.IO) {
+            dao.deleteNotesByAuthor(authorPublicKey)
         }
     }
 

@@ -24,7 +24,8 @@ fun AstraAvatar(
     name: String,
     modifier: Modifier = Modifier,
     size: Dp = 48.dp,
-    isOnline: Boolean = false
+    isOnline: Boolean = false,
+    model: Any? = null
 ) {
     val initial = name.firstOrNull()?.uppercase() ?: "?"
     val colors = listOf(
@@ -37,19 +38,30 @@ fun AstraAvatar(
     val colorPair = colors[name.hashCode().mod(colors.size).let { if (it < 0) it + colors.size else it }]
 
     Box(modifier = modifier.size(size)) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(CircleShape)
-                .background(Brush.linearGradient(colorPair)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = initial,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = (size.value * 0.4).sp
+        if (model != null) {
+            AstraImage(
+                model = model,
+                contentDescription = "$name profile photo",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(colorPair))
             )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(colorPair)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = initial,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = (size.value * 0.4).sp
+                )
+            }
         }
         if (isOnline) {
             Box(
@@ -332,10 +344,10 @@ fun AstraDialog(
                 )
             }
         },
-        shape = RoundedCornerShape(AstraTheme.radii.dialog),
-        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
-        titleContentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-        textContentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-        tonalElevation = AstraTheme.elevations.dialog
+        shape = RoundedCornerShape(30.dp),
+        containerColor = Color(0xE6111827),
+        titleContentColor = Color(0xFFF6F7FF),
+        textContentColor = Color(0xFFB9C3D4),
+        tonalElevation = 0.dp
     )
 }

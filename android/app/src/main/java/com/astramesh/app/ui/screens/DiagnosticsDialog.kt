@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,7 +39,7 @@ fun DiagnosticsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = DeepBlack,
+        containerColor = Color(0xE6111827),
         title = {
             Text("Network Diagnostics", color = SoftWhite, fontWeight = FontWeight.Bold)
         },
@@ -104,6 +105,9 @@ fun DiagnosticsDialog(
                 Text("Close", color = AccentViolet)
             }
         },
-        shape = RoundedCornerShape(AstraTheme.spacing.standard)
+        shape = RoundedCornerShape(30.dp),
+        titleContentColor = Color(0xFFF6F7FF),
+        textContentColor = Color(0xFFB9C3D4),
+        tonalElevation = 0.dp
     )
 }

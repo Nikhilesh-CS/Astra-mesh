@@ -256,6 +256,9 @@ interface MusicNoteDao {
     @Query("DELETE FROM music_notes WHERE noteId = :noteId")
     fun deleteNote(noteId: String)
 
+    @Query("DELETE FROM music_notes WHERE authorPublicKey = :authorPublicKey")
+    fun deleteNotesByAuthor(authorPublicKey: String)
+
     @Query("DELETE FROM music_notes WHERE expiresAt <= :now")
     fun deleteExpired(now: Long = System.currentTimeMillis())
 }

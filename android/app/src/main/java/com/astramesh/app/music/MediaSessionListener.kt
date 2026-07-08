@@ -2,6 +2,7 @@ package com.astramesh.app.music
 
 import android.content.Context
 import android.content.ComponentName
+import android.graphics.Bitmap
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
@@ -9,6 +10,8 @@ import android.net.Uri
 import android.provider.Settings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.security.MessageDigest
 
 class MediaSessionListener(private val context: Context) {
     suspend fun detectCurrentTrack(): DetectedMusicTrack? = withContext(Dispatchers.Default) {
@@ -46,6 +49,8 @@ class MediaSessionListener(private val context: Context) {
         val album = metadata.getString(android.media.MediaMetadata.METADATA_KEY_ALBUM)?.trim().orEmpty()
         val artUri = metadata.getString(android.media.MediaMetadata.METADATA_KEY_ALBUM_ART_URI)
             ?: metadata.getString(android.media.MediaMetadata.METADATA_KEY_ART_URI)
+        val artBitmap = metadata.getBitmap(android.media.MediaMetadata.METADATA_KEY_ALBUM_ART)
+            ?: metadata.getBitmap(android.media.MediaMetadata.METADATA_KEY_ART)
         val mediaId = metadata.getString(android.media.MediaMetadata.METADATA_KEY_MEDIA_ID)
             ?: "${packageName}:${title.lowercase()}:${artist.lowercase()}"
         return DetectedMusicTrack(
@@ -53,9 +58,26 @@ class MediaSessionListener(private val context: Context) {
             trackName = title.ifBlank { "Unknown track" },
             artist = artist.ifBlank { "Unknown artist" },
             album = album,
-            albumArtUri = artUri?.let { Uri.parse(it).toString() },
+            albumArtUri = artUri?.let { Uri.parse(it).toString() } ?: artBitmap?.let { saveArtworkBitmap(mediaId, it) },
             provider = packageName,
             playbackPositionMs = playbackState?.position ?: 0L
         )
+    }
+
+    private fun saveArtworkBitmap(mediaId: String, bitmap: Bitmap): String? {
+        return runCatching {
+            val dir = File(context.filesDir, "music_art").apply { mkdirs() }
+            val hash = MessageDigest.getInstance("SHA-256")
+                .digest(mediaId.toByteArray())
+                .joinToString("") { "%02x".format(it) }
+            val file = File(dir, "$hash.webp")
+            if (!file.exists()) {
+                file.outputStream().use { stream ->
+                    @Suppress("DEPRECATION")
+                    bitmap.compress(Bitmap.CompressFormat.WEBP, 92, stream)
+                }
+            }
+            file.absolutePath
+        }.getOrNull()
     }
 }

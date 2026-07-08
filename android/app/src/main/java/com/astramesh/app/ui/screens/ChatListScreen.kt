@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -93,8 +95,18 @@ fun ChatListScreen(
     val onionAddress by torManager.onionAddress.collectAsStateWithLifecycle()
     val musicRepository = remember(db) { MusicNoteRepositoryImpl(db.musicNoteDao()) }
     val musicNotes by musicRepository.observeActiveNotes().collectAsStateWithLifecycle(initialValue = emptyList())
+    val presenceStates by (com.astramesh.app.service.AstraMeshService.getInstance()
+        ?.presenceManager
+        ?.presence
+        ?: kotlinx.coroutines.flow.MutableStateFlow<Map<String, com.astramesh.app.presence.PresenceState>>(emptyMap()))
+        .collectAsStateWithLifecycle()
+    val listenTogetherManager = com.astramesh.app.service.AstraMeshService.getInstance()?.listenTogetherManager
+    val listenTogetherState by (listenTogetherManager?.state
+        ?: kotlinx.coroutines.flow.MutableStateFlow(com.astramesh.app.music.ListenTogetherState()))
+        .collectAsStateWithLifecycle()
     val musicResolver = remember(context) { MusicProviderResolver(context) }
     val mediaSessionListener = remember(context) { MediaSessionListener(context) }
+    val chatListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
 
     var showAddContact by remember { mutableStateOf(false) }
     var showShareContact by remember { mutableStateOf(false) }
@@ -102,6 +114,9 @@ fun ChatListScreen(
     var contactToDelete by remember { mutableStateOf<ContactEntity?>(null) }
     var showCreateMusicNote by remember { mutableStateOf(false) }
     var selectedMusicNote by remember { mutableStateOf<MusicNoteEntity?>(null) }
+    val mySigningKey = remember(identityManager) {
+        identityManager.loadIdentity()?.let { CryptoManager.toHex(it.signingPublicKey) }.orEmpty()
+    }
 
     val myContactString = remember(identityManager, onionAddress) {
         val identity = identityManager.loadIdentity()
@@ -192,12 +207,15 @@ fun ChatListScreen(
             }
         ) { paddingValues ->
             LazyColumn(
+                state = chatListState,
                 modifier = Modifier.padding(paddingValues).fillMaxSize(),
                 contentPadding = PaddingValues(bottom = AstraTheme.spacing.massive5, top = AstraTheme.spacing.small)
             ) {
             item {
                 AstraMusicNotesRow(
+                    db = db,
                     notes = musicNotes,
+                    mySigningKey = mySigningKey,
                     onCreate = { showCreateMusicNote = true },
                     onOpen = { selectedMusicNote = it }
                 )
@@ -248,18 +266,29 @@ fun ChatListScreen(
                 }
             } else {
                 items(contacts) { contact ->
-                    val isConnected = connectedEndpoints.contains(contact.endpointId) ||
-                        (contact.onionAddress.isNotBlank() && isTorReady)
+                    val isNearbyOnline = connectedEndpoints.contains(contact.endpointId)
+                    val livePresence = presenceStates[contact.signingPublicKey]
+                    val isContactOnline = isNearbyOnline || livePresence?.activity == "online"
+                    val routeLabel = when {
+                        isNearbyOnline -> "Nearby route ready"
+                        livePresence != null -> livePresence.label
+                        contact.onionAddress.isNotBlank() && isTorReady -> "Tor route standby"
+                        contact.onionAddress.isNotBlank() -> "Tor route offline"
+                        else -> "Secure route standby"
+                    }
                     
                     val lastMessage by db.messageDao().getLastMessageForContact(contact.signingPublicKey).collectAsStateWithLifecycle(initialValue = null)
                     val unreadCount by db.messageDao().getUnreadCountForContact(contact.signingPublicKey).collectAsStateWithLifecycle(initialValue = 0)
+                    val profile by db.profileDao().getProfile(contact.signingPublicKey).collectAsStateWithLifecycle(initialValue = null)
                     
                     val lastMessageText = lastMessage?.text ?: "Tap to chat..."
                     val lastMessageTime = lastMessage?.timestamp
 
                     ContactRow(
                         contact = contact, 
-                        isConnected = isConnected, 
+                        avatarModel = profile?.avatarLocalPath,
+                        isOnline = isContactOnline,
+                        routeLabel = routeLabel,
                         lastMessageText = lastMessageText,
                         lastMessageTime = lastMessageTime,
                         unreadCount = unreadCount,
@@ -366,20 +395,58 @@ fun ChatListScreen(
     selectedMusicNote?.let { note ->
         MusicNoteViewerDialog(
             note = note,
+            isOwnNote = note.authorPublicKey == mySigningKey,
             onDismiss = { selectedMusicNote = null },
             onListen = {
                 val opened = musicResolver.openTrack(note.toDetectedTrack())
                 if (!opened) Toast.makeText(context, "No supported music app found", Toast.LENGTH_SHORT).show()
             },
+            onDelete = {
+                com.astramesh.app.service.AstraMeshService.getInstance()?.musicNoteManager?.deleteMyNote()
+                selectedMusicNote = null
+                Toast.makeText(context, "Music Note deleted", Toast.LENGTH_SHORT).show()
+            },
             onListenTogether = {
                 val service = com.astramesh.app.service.AstraMeshService.getInstance()
-                service?.listenTogetherManager?.startSession(note.authorPublicKey, note.noteId, note.playbackPositionMs)
+                service?.listenTogetherManager?.inviteSession(note.authorPublicKey, note.noteId, note.playbackPositionMs)
                 val opened = musicResolver.openTrack(note.toDetectedTrack())
                 Toast.makeText(
                     context,
-                    if (opened) "Listen Together started" else "Sync started. Open the song in your music app.",
+                    if (opened) "Listen Together invite sent" else "Invite sent. Open the song in your music app.",
                     Toast.LENGTH_SHORT
                 ).show()
+            }
+        )
+    }
+
+    if (listenTogetherState.incomingInvite) {
+        val inviterName = contacts.firstOrNull { it.signingPublicKey == listenTogetherState.peerKey }?.name ?: "Astra contact"
+        AlertDialog(
+            onDismissRequest = { listenTogetherManager?.rejectIncomingInvite() },
+            title = { Text("Listen Together?") },
+            text = { Text("$inviterName wants to sync playback with you. ASTRA Mesh only shares playback metadata, not music audio.") },
+            confirmButton = {
+                Button(onClick = {
+                    val state = listenTogetherState
+                    scope.launch {
+                        val note = withContext(Dispatchers.IO) { db.musicNoteDao().getNote(state.noteId) }
+                        if (note != null) {
+                            musicResolver.openTrack(note.toDetectedTrack())
+                            listenTogetherManager?.acceptIncomingInvite()
+                            Toast.makeText(context, "Listen Together accepted", Toast.LENGTH_SHORT).show()
+                        } else {
+                            listenTogetherManager?.rejectIncomingInvite()
+                            Toast.makeText(context, "Music note is no longer available", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }) {
+                    Text("Accept")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { listenTogetherManager?.rejectIncomingInvite() }) {
+                    Text("Reject")
+                }
             }
         )
     }
@@ -448,10 +515,15 @@ private fun PremiumSectionHeader(title: String, accent: Color) {
 
 @Composable
 private fun AstraMusicNotesRow(
+    db: AppDatabase,
     notes: List<MusicNoteEntity>,
+    mySigningKey: String,
     onCreate: () -> Unit,
     onOpen: (MusicNoteEntity) -> Unit
 ) {
+    val localProfile by db.profileDao().getProfile("LOCAL_USER").collectAsStateWithLifecycle(initialValue = null)
+    val myNote = notes.firstOrNull { it.authorPublicKey == mySigningKey }
+    val contactNotes = notes.filterNot { it.authorPublicKey == mySigningKey }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -509,15 +581,18 @@ private fun AstraMusicNotesRow(
             item {
                 MusicNoteAvatarCard(
                     title = "Your Note",
-                    subtitle = "Share music",
-                    albumArtUri = null,
-                    onClick = onCreate
+                    subtitle = myNote?.trackName ?: "Share music",
+                    avatarUri = localProfile?.avatarLocalPath,
+                    albumArtUri = myNote?.albumArtUri,
+                    onClick = { myNote?.let(onOpen) ?: onCreate() }
                 )
             }
-            items(notes, key = { it.noteId }) { note ->
+            items(contactNotes, key = { it.noteId }) { note ->
+                val profile by db.profileDao().getProfile(note.authorPublicKey).collectAsStateWithLifecycle(initialValue = null)
                 MusicNoteAvatarCard(
                     title = note.authorName,
                     subtitle = note.trackName,
+                    avatarUri = profile?.avatarLocalPath,
                     albumArtUri = note.albumArtUri,
                     onClick = { onOpen(note) }
                 )
@@ -530,6 +605,7 @@ private fun AstraMusicNotesRow(
 private fun MusicNoteAvatarCard(
     title: String,
     subtitle: String,
+    avatarUri: String?,
     albumArtUri: String?,
     onClick: () -> Unit
 ) {
@@ -562,7 +638,14 @@ private fun MusicNoteAvatarCard(
                     .background(Color(0xE60A0C14)),
                 contentAlignment = Alignment.Center
             ) {
-                if (albumArtUri != null) {
+                if (avatarUri != null) {
+                    AsyncImage(
+                        model = avatarUri,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                    )
+                } else if (albumArtUri != null) {
                     AsyncImage(
                         model = albumArtUri,
                         contentDescription = null,
@@ -606,6 +689,9 @@ private fun CreateMusicNoteDialog(
     var durationHours by remember { mutableStateOf(24) }
     var visibility by remember { mutableStateOf(MusicNoteVisibility.CONTACTS) }
     var refreshKey by remember { mutableStateOf(0) }
+    var manualTitle by remember { mutableStateOf("") }
+    var manualArtist by remember { mutableStateOf("") }
+    var manualProvider by remember { mutableStateOf("Manual") }
 
     LaunchedEffect(refreshKey) {
         track = mediaSessionListener.detectCurrentTrack()
@@ -631,18 +717,37 @@ private fun CreateMusicNoteDialog(
                     val hasAccess = mediaSessionListener.hasNotificationAccess()
                     Text(
                         if (hasAccess) "Start playing music to create a Music Note."
-                        else "Enable ASTRA Mesh notification access, then play music to create a Music Note.",
+                        else "Music access is blocked on this device. You can enter the song manually.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    TextButton(onClick = {
-                        if (hasAccess) {
-                            refreshKey++
-                        } else {
-                            context.startActivity(mediaSessionListener.notificationAccessIntent())
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { refreshKey++ }) {
+                            Text("Refresh")
                         }
-                    }) {
-                        Text(if (hasAccess) "Refresh media session access" else "Enable ASTRA Music access")
+                        if (!hasAccess) {
+                            TextButton(onClick = { context.startActivity(mediaSessionListener.notificationAccessIntent()) }) {
+                                Text("Enable access")
+                            }
+                        }
                     }
+                    OutlinedTextField(
+                        value = manualTitle,
+                        onValueChange = { manualTitle = it.take(80) },
+                        label = { Text("Song name") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = manualArtist,
+                        onValueChange = { manualArtist = it.take(80) },
+                        label = { Text("Artist") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = manualProvider,
+                        onValueChange = { manualProvider = it.take(40) },
+                        label = { Text("Music app") },
+                        singleLine = true
+                    )
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Box(
@@ -669,37 +774,38 @@ private fun CreateMusicNoteDialog(
                             Text(providerLabel(currentTrack.provider), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                     }
-                    OutlinedTextField(
-                        value = noteText,
-                        onValueChange = { noteText = it.take(60) },
-                        label = { Text("Optional note") },
-                        singleLine = true,
-                        supportingText = { Text("${noteText.length}/60") }
-                    )
-                    SelectorRow(
-                        label = "Duration",
-                        options = listOf(6, 12, 24, 48).map { it to "${it}h" },
-                        selected = durationHours,
-                        onSelected = { durationHours = it }
-                    )
-                    SelectorRow(
-                        label = "Privacy",
-                        options = listOf(
-                            MusicNoteVisibility.ONLY_ME to "Only Me",
-                            MusicNoteVisibility.FAVORITES to "Favorites",
-                            MusicNoteVisibility.CONTACTS to "Contacts",
-                            MusicNoteVisibility.EVERYONE to "Everyone"
-                        ),
-                        selected = visibility,
-                        onSelected = { visibility = it }
-                    )
                 }
+                OutlinedTextField(
+                    value = noteText,
+                    onValueChange = { noteText = it.take(60) },
+                    label = { Text("Optional note") },
+                    singleLine = true,
+                    supportingText = { Text("${noteText.length}/60") }
+                )
+                SelectorRow(
+                    label = "Duration",
+                    options = listOf(6, 12, 24, 48).map { it to "${it}h" },
+                    selected = durationHours,
+                    onSelected = { durationHours = it }
+                )
+                SelectorRow(
+                    label = "Privacy",
+                    options = listOf(
+                        MusicNoteVisibility.ONLY_ME to "Only Me",
+                        MusicNoteVisibility.FAVORITES to "Favorites",
+                        MusicNoteVisibility.CONTACTS to "Contacts",
+                        MusicNoteVisibility.EVERYONE to "Everyone"
+                    ),
+                    selected = visibility,
+                    onSelected = { visibility = it }
+                )
             }
         },
         confirmButton = {
+            val publishTrack = track ?: manualMusicTrack(manualTitle, manualArtist, manualProvider)
             Button(
-                enabled = track != null,
-                onClick = { track?.let { onPublish(it, noteText, visibility, durationHours) } }
+                enabled = publishTrack != null,
+                onClick = { publishTrack?.let { onPublish(it, noteText, visibility, durationHours) } }
             ) {
                 Text("Publish")
             }
@@ -736,8 +842,10 @@ private fun <T> SelectorRow(
 @Composable
 private fun MusicNoteViewerDialog(
     note: MusicNoteEntity,
+    isOwnNote: Boolean,
     onDismiss: () -> Unit,
     onListen: () -> Unit,
+    onDelete: () -> Unit,
     onListenTogether: () -> Unit
 ) {
     AlertDialog(
@@ -767,6 +875,13 @@ private fun MusicNoteViewerDialog(
                 Text(note.trackName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(note.artist, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("${providerLabel(note.provider)} - ${timeLeftLabel(note.expiresAt)} left", style = MaterialTheme.typography.labelMedium, color = Color(0xFF9AF6D0))
+                if (isOwnNote) {
+                    TextButton(onClick = onDelete) {
+                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Delete Note")
+                    }
+                }
             }
         },
         confirmButton = {
@@ -873,7 +988,9 @@ fun NearbyDeviceChip(device: NearbyDevice, onClick: () -> Unit) {
 @Composable
 fun ContactRow(
     contact: ContactEntity,
-    isConnected: Boolean,
+    avatarModel: Any?,
+    isOnline: Boolean,
+    routeLabel: String,
     lastMessageText: String,
     lastMessageTime: Long?,
     unreadCount: Int = 0,
@@ -902,7 +1019,7 @@ fun ContactRow(
             .padding(horizontal = AstraTheme.spacing.standard, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AstraAvatar(name = contact.name, size = AstraTheme.spacing.massive4, isOnline = isConnected)
+        AstraAvatar(name = contact.name, model = avatarModel, size = AstraTheme.spacing.massive4, isOnline = isOnline)
         Spacer(modifier = Modifier.width(AstraTheme.spacing.medium))
         Column(modifier = Modifier.weight(1f)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -926,13 +1043,29 @@ fun ContactRow(
             }
             Spacer(modifier = Modifier.height(7.dp))
             Text(
-                if (isConnected) "Live route ready" else "Secure route standby",
+                routeLabel,
                 style = MaterialTheme.typography.labelSmall,
-                color = if (isConnected) Color(0xFF9AF6D0) else Color(0xFF7B8496),
+                color = if (isOnline) Color(0xFF9AF6D0) else Color(0xFF7B8496),
                 maxLines = 1
             )
         }
     }
+}
+
+private fun manualMusicTrack(title: String, artist: String, provider: String): DetectedMusicTrack? {
+    val cleanTitle = title.trim()
+    if (cleanTitle.isBlank()) return null
+    val cleanArtist = artist.trim().ifBlank { "Unknown artist" }
+    val cleanProvider = provider.trim().ifBlank { "Manual" }
+    return DetectedMusicTrack(
+        trackId = "manual:${cleanTitle.lowercase()}:${cleanArtist.lowercase()}",
+        trackName = cleanTitle,
+        artist = cleanArtist,
+        album = "",
+        albumArtUri = null,
+        provider = cleanProvider,
+        playbackPositionMs = 0L
+    )
 }
 
 

@@ -54,10 +54,20 @@ class MusicNoteManager(
             ).let { unsigned ->
                 unsigned.copy(signature = signNote(unsigned))
             }
+            repository.removeNotesByAuthor(authorKey)
             repository.saveNote(note)
             if (visibility != MusicNoteVisibility.ONLY_ME) {
                 broadcastNote(note)
             }
+        }
+    }
+
+    fun deleteMyNote() {
+        scope.launch(Dispatchers.IO) {
+            val identity = identityManager.loadIdentity() ?: return@launch
+            val authorKey = CryptoManager.toHex(identity.signingPublicKey)
+            repository.removeNotesByAuthor(authorKey)
+            broadcastDelete(authorKey)
         }
     }
 
@@ -66,6 +76,11 @@ class MusicNoteManager(
             runCatching {
                 val json = JSONObject(raw)
                 if (json.optString("astraType") != "music_note") return@runCatching
+                val action = json.optString("action", "publish")
+                if (action == "delete") {
+                    repository.removeNotesByAuthor(senderKey)
+                    return@runCatching
+                }
                 val note = MusicNoteEntity(
                     noteId = json.getString("noteId"),
                     authorId = senderKey,
@@ -86,6 +101,7 @@ class MusicNoteManager(
                     updatedAt = System.currentTimeMillis()
                 )
                 if (note.expiresAt > System.currentTimeMillis() && note.trackName.isNotBlank()) {
+                    repository.removeNotesByAuthor(senderKey)
                     repository.saveNote(note)
                 }
             }
@@ -100,10 +116,25 @@ class MusicNoteManager(
         }
     }
 
+    private suspend fun broadcastDelete(authorKey: String) = withContext(Dispatchers.IO) {
+        val contacts = db.contactDao().getAllContactsSync()
+        val payload = JSONObject()
+            .put("astraType", "music_note")
+            .put("version", 1)
+            .put("action", "delete")
+            .put("authorPublicKey", authorKey)
+            .put("deletedAt", System.currentTimeMillis())
+            .toString()
+        contacts.forEach { contact ->
+            messageRouter.sendRawPayload(contact.signingPublicKey, payload, MeshProtocol.TYPE_MUSIC_NOTE)
+        }
+    }
+
     private fun encodeNote(note: MusicNoteEntity): String {
         return JSONObject()
             .put("astraType", "music_note")
             .put("version", 1)
+            .put("action", "publish")
             .put("noteId", note.noteId)
             .put("authorName", note.authorName)
             .put("signature", note.signature)

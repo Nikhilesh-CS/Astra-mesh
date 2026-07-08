@@ -9,6 +9,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,6 +24,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -71,9 +73,9 @@ fun SettingsScreen(
     val reduceMotion by settingsManager.reduceMotionFlow.collectAsStateWithLifecycle(initialValue = false)
     val showTransportIcons by settingsManager.showTransportIconsFlow.collectAsStateWithLifecycle(initialValue = true)
     val darkMode by settingsManager.darkModeFlow.collectAsStateWithLifecycle(initialValue = true)
+    val localProfile by db.profileDao().getProfile("LOCAL_USER").collectAsStateWithLifecycle(initialValue = null)
     
     // Dialog States
-    var showEditProfileDialog by remember { mutableStateOf(false) }
     var showClearChatsDialog by remember { mutableStateOf(false) }
     var showOnionDialog by remember { mutableStateOf(false) }
     var showPrivacyDialog by remember { mutableStateOf(false) }
@@ -232,14 +234,18 @@ fun SettingsScreen(
                         .padding(top = AstraTheme.spacing.extraLarge, bottom = AstraTheme.spacing.standard),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    AstraAvatar(name = identity?.name ?: "Unknown", size = 120.dp)
+                    AstraAvatar(
+                        name = identity?.name ?: localProfile?.name ?: "Unknown",
+                        model = localProfile?.avatarLocalPath,
+                        size = 120.dp
+                    )
                     Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
                     
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(AstraTheme.spacing.large))
                             .background(AstraTheme.colors.primaryContainer) // Darker green for background
-                            .clickable { showEditProfileDialog = true }
+                            .clickable { navController.navigate("profile") }
                             .padding(horizontal = AstraTheme.spacing.extraLarge, vertical = AstraTheme.spacing.small)
                     ) {
                         Text(
@@ -267,7 +273,7 @@ fun SettingsScreen(
                     title = "About",
                     subtitle = "Privacy-first communication",
                     subtitleColor = AccentCyan,
-                    onClick = { showEditProfileDialog = true }
+                    onClick = { showPrivacyDialog = true }
                 )
             }
             item {
@@ -487,47 +493,6 @@ fun SettingsScreen(
 
     // --- Dialogs ---
 
-    if (showEditProfileDialog) {
-        var nameInput by remember { mutableStateOf(identity?.name ?: "") }
-        AlertDialog(
-            onDismissRequest = { showEditProfileDialog = false },
-            containerColor = CardSurface,
-            title = { Text("Edit Profile", color = SoftWhite) },
-            text = {
-                OutlinedTextField(
-                    value = nameInput,
-                    onValueChange = { nameInput = it },
-                    label = { Text("Name", color = MutedGray) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AccentCyan,
-                        unfocusedBorderColor = DimGray,
-                        focusedTextColor = SoftWhite,
-                        unfocusedTextColor = SoftWhite
-                    ),
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (nameInput.isNotBlank()) {
-                        scope.launch(Dispatchers.IO) {
-                            identityManager.updateName(nameInput)
-                            identity = identityManager.loadIdentity()
-                            withContext(Dispatchers.Main) { showEditProfileDialog = false }
-                        }
-                    }
-                }) {
-                    Text("Save", color = AccentCyan)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEditProfileDialog = false }) {
-                    Text("Cancel", color = MutedGray)
-                }
-            }
-        )
-    }
-
     if (showClearChatsDialog) {
         AlertDialog(
             onDismissRequest = { showClearChatsDialog = false },
@@ -711,14 +676,33 @@ fun SettingsItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = AstraTheme.spacing.large, vertical = 6.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.105f),
+                        Color(0xFF0B1020).copy(alpha = 0.78f)
+                    )
+                )
+            )
+            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(24.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = AstraTheme.spacing.extraLarge, vertical = 14.dp),
+            .padding(horizontal = AstraTheme.spacing.standard, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = title, tint = MutedGray, modifier = Modifier.size(26.dp))
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(AccentCyan.copy(alpha = 0.13f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = title, tint = AccentCyan, modifier = Modifier.size(23.dp))
+        }
         Spacer(modifier = Modifier.width(AstraTheme.spacing.large))
         Column {
-            Text(title, color = SoftWhite, fontSize = AstraTheme.typography.bodyLarge.fontSize, fontWeight = FontWeight.Normal)
+            Text(title, color = SoftWhite, fontSize = AstraTheme.typography.bodyLarge.fontSize, fontWeight = FontWeight.SemiBold)
             if (subtitle != null) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(subtitle, color = subtitleColor, fontSize = AstraTheme.typography.bodyMedium.fontSize)
@@ -738,14 +722,33 @@ fun SettingsSwitchItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = AstraTheme.spacing.large, vertical = 6.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.105f),
+                        Color(0xFF0B1020).copy(alpha = 0.78f)
+                    )
+                )
+            )
+            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(24.dp))
             .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = AstraTheme.spacing.extraLarge, vertical = 14.dp),
+            .padding(horizontal = AstraTheme.spacing.standard, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = title, tint = MutedGray, modifier = Modifier.size(26.dp))
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(AccentCyan.copy(alpha = 0.13f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = title, tint = AccentCyan, modifier = Modifier.size(23.dp))
+        }
         Spacer(modifier = Modifier.width(AstraTheme.spacing.large))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, color = SoftWhite, fontSize = AstraTheme.typography.bodyLarge.fontSize, fontWeight = FontWeight.Normal)
+            Text(title, color = SoftWhite, fontSize = AstraTheme.typography.bodyLarge.fontSize, fontWeight = FontWeight.SemiBold)
             if (subtitle != null) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(subtitle, color = MutedGray, fontSize = AstraTheme.typography.bodyMedium.fontSize)

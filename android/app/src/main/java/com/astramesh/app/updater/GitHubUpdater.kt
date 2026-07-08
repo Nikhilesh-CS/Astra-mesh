@@ -94,35 +94,17 @@ class GitHubUpdater(private val context: Context) {
             onError("No APK found in the release.")
             return
         }
-
-        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val uri = Uri.parse(updateInfo.downloadUrl)
-        val request = DownloadManager.Request(uri)
-            .setTitle("AstraMesh Update")
-            .setDescription("Downloading version ${updateInfo.version}")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "AstraMesh-v${updateInfo.version}.apk")
-
-        val downloadId = downloadManager.enqueue(request)
-
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-                if (id == downloadId) {
-                    context?.unregisterReceiver(this)
-                    onComplete()
-                    installApk("AstraMesh-v${updateInfo.version}.apk", onError)
-                }
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(updateInfo.downloadUrl)).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
+            context.startActivity(intent)
+            onProgress(1f)
+            onComplete()
+        } catch (e: Exception) {
+            Log.e("GitHubUpdater", "Failed to open update URL", e)
+            onError("Could not open the release download page: ${e.message}")
         }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_EXPORTED)
-        } else {
-            context.registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
-        }
-
-        // We could run a coroutine here to poll DownloadManager for progress if needed for UI
     }
 
     private fun installApk(fileName: String, onError: (String) -> Unit) {

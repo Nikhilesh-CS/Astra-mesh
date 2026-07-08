@@ -1,8 +1,10 @@
-package com.astramesh.app.ui.screens
+﻿package com.astramesh.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -25,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -32,6 +35,7 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.astramesh.app.data.AppDatabase
 import com.astramesh.app.data.ContactEntity
+import com.astramesh.app.data.MessageEntity
 import com.astramesh.app.data.ProfileEntity
 import com.astramesh.app.ui.theme.AstraTheme
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +48,16 @@ private data class ContactProfileUiState(
     val mediaCount: Int = 0,
     val fileCount: Int = 0,
     val linkCount: Int = 0,
+    val mediaItems: List<MessageEntity> = emptyList(),
+    val fileItems: List<MessageEntity> = emptyList(),
+    val linkItems: List<SharedLinkItem> = emptyList(),
     val isLoading: Boolean = true
+)
+
+private data class SharedLinkItem(
+    val messageId: String,
+    val url: String,
+    val timestamp: Long
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,12 +75,20 @@ fun ContactProfileScreen(
             val contact = db.contactDao().getContact(contactKey)
             val profile = db.profileDao().getProfileSync(contactKey)
             val messages = db.messageDao().getMessagesForContactSync(contactKey)
+            val mediaItems = messages.filter { it.messageType in setOf("IMAGE", "VIDEO", "GIF", "STICKER") }
+            val fileItems = messages.filter { it.messageType in setOf("DOCUMENT", "APK", "AUDIO", "VOICE") }
+            val linkItems = messages.flatMap { message ->
+                extractLinks(message.text).map { SharedLinkItem(message.messageId, it, message.timestamp) }
+            }
             ContactProfileUiState(
                 contact = contact,
                 profile = profile,
-                mediaCount = messages.count { it.messageType in setOf("IMAGE", "VIDEO", "GIF", "STICKER") },
-                fileCount = messages.count { it.messageType in setOf("DOCUMENT", "APK", "AUDIO", "VOICE") },
-                linkCount = messages.count { it.text.contains("http://") || it.text.contains("https://") },
+                mediaCount = mediaItems.size,
+                fileCount = fileItems.size,
+                linkCount = linkItems.size,
+                mediaItems = mediaItems,
+                fileItems = fileItems,
+                linkItems = linkItems,
                 isLoading = false
             )
         }
@@ -81,6 +102,7 @@ fun ContactProfileScreen(
     val bio = profile?.bio?.takeIf { it.isNotBlank() } ?: "No bio shared yet."
     val fingerprint = contactKey.chunked(4).take(8).joinToString(" ")
     var showAvatarViewer by remember { mutableStateOf(false) }
+    var showSharedMedia by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -188,7 +210,7 @@ fun ContactProfileScreen(
                         .padding(horizontal = AstraTheme.spacing.standard)
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().clickable { },
+                        modifier = Modifier.fillMaxWidth().clickable { showSharedMedia = true },
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -304,7 +326,205 @@ fun ContactProfileScreen(
                     }
                 }
             }
+            if (showSharedMedia) {
+                SharedMediaDialog(
+                    uiState = uiState,
+                    onDismiss = { showSharedMedia = false }
+                )
+            }
         }
+}
+
+@Composable
+private fun SharedMediaDialog(
+    uiState: ContactProfileUiState,
+    onDismiss: () -> Unit
+) {
+    var selectedTab by remember { mutableStateOf(0) }
+    val tabs = listOf("Media", "Files", "Links")
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.82f)
+                .padding(16.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Media, Links, and Docs", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(
+                            "${uiState.mediaCount} media • ${uiState.fileCount} files • ${uiState.linkCount} links",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Rounded.Close, contentDescription = "Close")
+                    }
+                }
+
+                TabRow(selectedTabIndex = selectedTab) {
+                    tabs.forEachIndexed { index, title ->
+                        Tab(
+                            selected = selectedTab == index,
+                            onClick = { selectedTab = index },
+                            text = { Text(title) }
+                        )
+                    }
+                }
+
+                when (selectedTab) {
+                    0 -> SharedMessageList(
+                        emptyText = "No shared images or videos yet.",
+                        messages = uiState.mediaItems
+                    )
+                    1 -> SharedMessageList(
+                        emptyText = "No shared documents or audio yet.",
+                        messages = uiState.fileItems
+                    )
+                    else -> SharedLinkList(uiState.linkItems)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SharedMessageList(
+    emptyText: String,
+    messages: List<MessageEntity>
+) {
+    if (messages.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(emptyText, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        items(messages, key = { it.messageId }) { message ->
+            SharedMessageRow(message)
+        }
+    }
+}
+
+@Composable
+private fun SharedMessageRow(message: MessageEntity) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(MaterialTheme.shapes.medium)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (message.thumbnailUri != null || message.localUri != null) {
+                AsyncImage(
+                    model = message.thumbnailUri ?: message.localUri,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = when (message.messageType) {
+                        "VIDEO" -> Icons.Rounded.Videocam
+                        "AUDIO", "VOICE" -> Icons.Rounded.GraphicEq
+                        "DOCUMENT", "APK" -> Icons.Rounded.Description
+                        else -> Icons.Rounded.Image
+                    },
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = message.fileName ?: message.text.takeIf { it.isNotBlank() } ?: message.messageType,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = listOfNotNull(message.messageType, message.fileSize?.let { formatFileSize(it) }, message.transferStatus).joinToString(" • "),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+private fun SharedLinkList(links: List<SharedLinkItem>) {
+    if (links.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("No shared links yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        items(links, key = { it.messageId + it.url }) { link ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.large)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Rounded.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    link.url,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+private fun extractLinks(text: String): List<String> {
+    if (text.isBlank()) return emptyList()
+    return Regex("""https?://\S+""").findAll(text).map { it.value.trimEnd('.', ',', ')') }.toList()
+}
+
+private fun formatFileSize(bytes: Long): String {
+    val kb = bytes / 1024.0
+    val mb = kb / 1024.0
+    return if (mb >= 1.0) String.format("%.1f MB", mb) else String.format("%.0f KB", kb)
 }
 
 @Composable

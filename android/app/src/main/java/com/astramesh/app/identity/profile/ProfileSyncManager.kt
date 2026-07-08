@@ -67,6 +67,8 @@ class ProfileSyncManager(
             if (avatarHash.isNotBlank() && avatarHash != currentProfile?.avatarHash) {
                 sendProfilePhotoRequest(senderKey, avatarHash)
             }
+        } else if (avatarHash.isNotBlank() && currentProfile.avatarHash == avatarHash && currentProfile.avatarLocalPath.isNullOrBlank()) {
+            sendProfilePhotoRequest(senderKey, avatarHash)
         } else {
             Log.d(TAG, "Received profile update from $senderKey but we already have version ${currentProfile.profileVersion}")
         }
@@ -78,9 +80,11 @@ class ProfileSyncManager(
 
         val myProfile = profileRepository.getLocalProfile().firstOrNull()
         if (myProfile != null && myProfile.avatarHash == requestedHash && myProfile.avatarLocalPath != null) {
-            // Read file and send it
             try {
-                val file = java.io.File(myProfile.avatarLocalPath)
+                val cacheManager = ProfileCacheManagerImpl(context)
+                val file = cacheManager.getAvatarFile(localUserKey, "512")
+                    ?: cacheManager.getAvatarFile(localUserKey, "256")
+                    ?: java.io.File(myProfile.avatarLocalPath)
                 if (file.exists()) {
                     val bytes = file.readBytes()
                     val b64 = java.util.Base64.getEncoder().encodeToString(bytes)

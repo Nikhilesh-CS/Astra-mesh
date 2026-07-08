@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.sp
 import com.astramesh.app.crypto.CryptoManager
 import com.astramesh.app.identity.IdentityManager
 import com.astramesh.app.identity.backup.IdentityRestoreManager
+import com.astramesh.app.ui.components.PremiumAuroraBackground
+import com.astramesh.app.ui.components.premiumGlass
 import com.astramesh.app.ui.theme.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -49,33 +51,7 @@ fun SetupScreen(
     val pagerState = rememberPagerState(pageCount = { 4 })
     val coroutineScope = rememberCoroutineScope()
 
-    // Gentle background ambient animation
-    val infiniteTransition = rememberInfiniteTransition(label = "bg")
-    val offset by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1000f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(15000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "gradientShift"
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.background,
-                        AstraTheme.colors.surface, // Slight tint
-                        MaterialTheme.colorScheme.background
-                    ),
-                    start = Offset(offset, 0f),
-                    end = Offset(offset + 1000f, 2000f)
-                )
-            )
-    ) {
+    PremiumAuroraBackground {
         Column(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -258,12 +234,12 @@ fun OnboardingPage3() {
 @Composable
 fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> Unit) {
     var name by remember { mutableStateOf("") }
-    var passphrase by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
 
     fun createIdentity() {
         val cleanName = name.trim()
-        if (cleanName.isNotBlank() && passphrase.isNotBlank()) {
+        if (cleanName.isNotBlank() && password.isNotBlank()) {
             val identity = CryptoManager.generateIdentity(cleanName)
             identityManager.saveIdentity(identity)
             focusManager.clearFocus(force = true)
@@ -278,84 +254,93 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = "Your Network\nYour Privacy\nYour Freedom",
-            style = MaterialTheme.typography.headlineLarge,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        
-        Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
-        
-        Text(
-            text = "Welcome to AstraMesh.",
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.primary,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(AstraTheme.spacing.massive3))
-
-        // Name field
-        OutlinedTextField(
-            value = name,
-            onValueChange = { name = it },
-            label = { Text("Display Name", style = MaterialTheme.typography.bodyMedium) },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(AstraTheme.spacing.standard),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
-            ),
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-            textStyle = MaterialTheme.typography.bodyLarge
-        )
-
-        Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
-
-        // Passphrase field
-        OutlinedTextField(
-            value = passphrase,
-            onValueChange = { passphrase = it },
-            label = { Text("Passphrase", style = MaterialTheme.typography.bodyMedium) },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(AstraTheme.spacing.standard),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
-            ),
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { createIdentity() }),
-            textStyle = MaterialTheme.typography.bodyLarge
-        )
-
-        Spacer(modifier = Modifier.height(AstraTheme.spacing.massive1))
-
-        Button(
-            onClick = {
-                createIdentity()
-            },
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(AstraTheme.spacing.massive4),
-            enabled = name.trim().isNotBlank() && passphrase.isNotBlank(),
-            shape = RoundedCornerShape(AstraTheme.spacing.standard),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            )
+                .premiumGlass(radius = 30.dp, alpha = 0.12f)
+                .padding(AstraTheme.spacing.large),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                "Create Identity",
-                style = MaterialTheme.typography.labelLarge
+                text = "Your Network\nYour Privacy\nYour Freedom",
+                style = MaterialTheme.typography.headlineLarge,
+                textAlign = TextAlign.Center,
+                color = Color(0xFFF6F7FF),
+                fontWeight = FontWeight.Black
             )
+
+            Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
+
+            Text(
+                text = "Welcome to Astra Mesh",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(AstraTheme.spacing.massive2))
+
+            // Name field
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Display Name", style = MaterialTheme.typography.bodyMedium) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.14f),
+                    focusedContainerColor = Color.White.copy(alpha = 0.10f),
+                    unfocusedContainerColor = Color.White.copy(alpha = 0.07f)
+                ),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                textStyle = MaterialTheme.typography.bodyLarge
+            )
+
+            Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
+
+            // Password field
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Enter your password", style = MaterialTheme.typography.bodyMedium) },
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.14f),
+                    focusedContainerColor = Color.White.copy(alpha = 0.10f),
+                    unfocusedContainerColor = Color.White.copy(alpha = 0.07f)
+                ),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { createIdentity() }),
+                textStyle = MaterialTheme.typography.bodyLarge
+            )
+
+            Spacer(modifier = Modifier.height(AstraTheme.spacing.massive1))
+
+            Button(
+                onClick = {
+                    createIdentity()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(AstraTheme.spacing.massive4),
+                enabled = name.trim().isNotBlank() && password.isNotBlank(),
+                shape = RoundedCornerShape(22.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            ) {
+                Text(
+                    "Create Identity",
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
@@ -406,10 +391,10 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
         if (showRestoreDialog) {
             AlertDialog(
                 onDismissRequest = { if (!isRestoring) showRestoreDialog = false },
-                title = { Text("Restore Identity") },
+                title = { Text("Restore Identity", color = Color(0xFFF6F7FF), fontWeight = FontWeight.Black) },
                 text = {
                     Column {
-                        Text("Enter the password used to encrypt the backup:")
+                        Text("Enter the password used to encrypt the backup:", color = Color(0xFFB9C3D4))
                         Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
                         OutlinedTextField(
                             value = restorePassword,
@@ -417,7 +402,14 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
                             label = { Text("Backup Password") },
                             visualTransformation = PasswordVisualTransformation(),
                             singleLine = true,
-                            enabled = !isRestoring
+                            enabled = !isRestoring,
+                            shape = RoundedCornerShape(20.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.14f),
+                                focusedContainerColor = Color.White.copy(alpha = 0.10f),
+                                unfocusedContainerColor = Color.White.copy(alpha = 0.07f)
+                            )
                         )
                         if (restoreError != null) {
                             Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
@@ -444,7 +436,12 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
                     ) {
                         Text("Cancel")
                     }
-                }
+                },
+                shape = RoundedCornerShape(30.dp),
+                containerColor = Color(0xE6111827),
+                titleContentColor = Color(0xFFF6F7FF),
+                textContentColor = Color(0xFFB9C3D4),
+                tonalElevation = 0.dp
             )
         }
     }

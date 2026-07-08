@@ -144,6 +144,7 @@ import com.astramesh.app.engine.MessagePayload
 import com.astramesh.app.network.MessageRouter
 import com.astramesh.app.network.NearbyConnectionManager
 import com.astramesh.app.transfer.MediaTransferManager
+import com.astramesh.app.ui.components.AstraAvatar
 import com.astramesh.app.ui.components.ConnectionStatusPill
 import com.astramesh.app.ui.components.MediaContent
 import com.astramesh.app.ui.components.TransportType
@@ -210,6 +211,7 @@ fun ChatScreen(
     }
 
     val contactName by viewModel.contactName.collectAsStateWithLifecycle()
+    val contactProfile by db.profileDao().getProfile(contactKey).collectAsStateWithLifecycle(initialValue = null)
     val contactEndpoint by viewModel.contactEndpoint.collectAsStateWithLifecycle()
     val contactOnion by viewModel.contactOnion.collectAsStateWithLifecycle()
     val connectedEndpoints by nearbyManager.connectedEndpoints.collectAsStateWithLifecycle()
@@ -254,7 +256,7 @@ fun ChatScreen(
 
     val reversedMessages = remember(messages) { messages.asReversed() }
     val isNearbyOnline = connectedEndpoints.contains(contactEndpoint)
-    val isConnected = isNearbyOnline || contactOnion.isNotBlank()
+    val isConnected = isNearbyOnline || conversationPresence?.activity == "online"
     val inSelectionMode = selectedIds.isNotEmpty()
 
     val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -408,6 +410,7 @@ fun ChatScreen(
         topBar = {
             ChatHeader(
                 contactName = contactName,
+                avatarModel = contactProfile?.avatarLocalPath,
                 isConnected = isConnected,
                 isNearbyOnline = isNearbyOnline,
                 contactEndpoint = contactEndpoint,
@@ -718,6 +721,7 @@ fun ChatScreen(
 @Composable
 private fun ChatHeader(
     contactName: String,
+    avatarModel: Any?,
     isConnected: Boolean,
     isNearbyOnline: Boolean,
     contactEndpoint: String,
@@ -766,6 +770,7 @@ private fun ChatHeader(
                     "search" -> SearchHeader(searchQuery, searchCountLabel, onSearchChange, onPreviousResult, onNextResult)
                     else -> NormalHeader(
                         contactName = contactName,
+                        avatarModel = avatarModel,
                         isConnected = isConnected,
                         isNearbyOnline = isNearbyOnline,
                         contactEndpoint = contactEndpoint,
@@ -785,6 +790,7 @@ private fun ChatHeader(
 @Composable
 private fun NormalHeader(
     contactName: String,
+    avatarModel: Any?,
     isConnected: Boolean,
     isNearbyOnline: Boolean,
     contactEndpoint: String,
@@ -799,21 +805,13 @@ private fun NormalHeader(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .clickable(onClick = onOpenProfile)
-                .background(MaterialTheme.colorScheme.primaryContainer),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = contactName.firstOrNull()?.uppercase() ?: "A",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-        }
+        AstraAvatar(
+            name = contactName,
+            model = avatarModel,
+            size = 44.dp,
+            isOnline = isConnected,
+            modifier = Modifier.clickable(onClick = onOpenProfile)
+        )
         Spacer(Modifier.width(10.dp))
         Column(
             modifier = Modifier
@@ -832,7 +830,7 @@ private fun NormalHeader(
                 text = when {
                     !livePresenceLabel.isNullOrBlank() -> livePresenceLabel
                     isNearbyOnline -> "Bluetooth Relay • Encrypted"
-                    contactOnion.isNotBlank() -> "Online • Encrypted"
+                    contactOnion.isNotBlank() -> "Tor route • Encrypted"
                     isConnected -> "Mesh Connected • Encrypted"
                     else -> "Offline • Encrypted"
                 },

@@ -18,6 +18,9 @@ enum class MusicNoteVisibility(val wireValue: String) {
 }
 
 enum class ListenTogetherEventType {
+    INVITE,
+    ACCEPT,
+    REJECT,
     PLAY,
     PAUSE,
     SEEK,

@@ -62,7 +62,7 @@ fun UpdateDialog(
                         trackColor = CardSurface
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Downloading...", color = MutedGray, fontSize = 12.sp)
+                    Text("Opening secure GitHub release...", color = MutedGray, fontSize = 12.sp)
                 } else {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -76,7 +76,7 @@ fun UpdateDialog(
                             onClick = onConfirm,
                             colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
                         ) {
-                            Text("Update Now", color = CardSurface, fontWeight = FontWeight.Bold)
+                            Text("Open Release", color = CardSurface, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

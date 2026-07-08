@@ -36,6 +36,7 @@ class ProfileRepositoryImpl(
 
     override suspend fun updateLocalProfile(name: String, bio: String, statusMessage: String, avatarUri: Uri?) {
         withContext(Dispatchers.IO) {
+        identityManager.updateName(name)
         val currentProfile = profileDao.getProfileSync(localUserKey)
         
         var newAvatarHash = currentProfile?.avatarHash
