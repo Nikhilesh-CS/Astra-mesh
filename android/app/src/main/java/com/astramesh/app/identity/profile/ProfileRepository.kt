@@ -46,7 +46,7 @@ class ProfileRepositoryImpl(
             val processed = imageProcessor.processAvatar(avatarUri).getOrThrow()
             newAvatarHash = processed.hash
             
-            // Preserve the original bytes for profile viewing and sync; only derived sizes are compressed.
+            // Preserve original bytes locally for profile viewing. Contacts receive optimized derivatives.
             val originalFile = profileCacheManager.saveAvatarBytes(
                 localUserKey,
                 "original",
@@ -54,6 +54,7 @@ class ProfileRepositoryImpl(
                 processed.originalExtension
             )
             profileCacheManager.saveAvatarBytes(localUserKey, "512", processed.size512Bytes)
+            profileCacheManager.saveAvatarBytes(localUserKey, "1024", processed.size1024Bytes)
             profileCacheManager.saveAvatarBytes(localUserKey, "256", processed.size256Bytes)
             profileCacheManager.saveAvatarBytes(localUserKey, "thumb", processed.thumbBytes)
             

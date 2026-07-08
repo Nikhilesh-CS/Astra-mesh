@@ -1,7 +1,11 @@
 package com.astramesh.app.network
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,6 +58,10 @@ class NearbyConnectionManager(private val context: Context) {
 
     fun startAdvertising() {
         if (isAdvertising) return
+        if (!hasNearbyPermissions()) {
+            _connectionStatus.value = "Nearby permissions needed"
+            return
+        }
         isAdvertising = true
 
         val advertisingOptions = AdvertisingOptions.Builder()
@@ -77,6 +85,10 @@ class NearbyConnectionManager(private val context: Context) {
 
     fun startDiscovery() {
         if (isDiscovering) return
+        if (!hasNearbyPermissions()) {
+            _connectionStatus.value = "Nearby permissions needed"
+            return
+        }
         isDiscovering = true
 
         val discoveryOptions = DiscoveryOptions.Builder()
@@ -142,6 +154,36 @@ class NearbyConnectionManager(private val context: Context) {
         _connectedEndpoints.value = emptySet()
         _connectionStatus.value = "Stopped"
         endpointNames.clear()
+    }
+
+    fun stopDiscovery() {
+        connectionsClient.stopDiscovery()
+        isDiscovering = false
+        _nearbyDevices.value = emptyList()
+        if (isAdvertising || _connectedEndpoints.value.isNotEmpty()) {
+            _connectionStatus.value = "Battery saver discovery paused"
+        } else {
+            _connectionStatus.value = "Discovery stopped"
+        }
+    }
+
+    private fun hasNearbyPermissions(): Boolean {
+        val permissions = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                add(Manifest.permission.BLUETOOTH_SCAN)
+                add(Manifest.permission.BLUETOOTH_ADVERTISE)
+                add(Manifest.permission.BLUETOOTH_CONNECT)
+            } else {
+                add(Manifest.permission.ACCESS_FINE_LOCATION)
+                add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.NEARBY_WIFI_DEVICES)
+            }
+        }
+        return permissions.all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
     }
 
     private val endpointDiscoveryCallback = object : EndpointDiscoveryCallback() {

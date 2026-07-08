@@ -19,6 +19,7 @@ class ProfileSyncManager(
     private val TAG = "ProfileSyncManager"
     private val scope = CoroutineScope(Dispatchers.IO)
     private val localUserKey = "LOCAL_USER"
+    private val maxSyncedAvatarBytes = 512L * 1024L
 
     fun handleProfilePacket(type: String, payload: String, senderKey: String) {
         scope.launch {
@@ -82,9 +83,16 @@ class ProfileSyncManager(
         if (myProfile != null && myProfile.avatarHash == requestedHash && myProfile.avatarLocalPath != null) {
             try {
                 val cacheManager = ProfileCacheManagerImpl(context)
-                val file = cacheManager.getAvatarFile(localUserKey, "512")
-                    ?: cacheManager.getAvatarFile(localUserKey, "256")
-                    ?: java.io.File(myProfile.avatarLocalPath)
+                val file = listOfNotNull(
+                    cacheManager.getAvatarFile(localUserKey, "1024"),
+                    cacheManager.getAvatarFile(localUserKey, "512"),
+                    cacheManager.getAvatarFile(localUserKey, "256"),
+                    cacheManager.getAvatarFile(localUserKey, "thumb")
+                ).firstOrNull { it.exists() && it.length() <= maxSyncedAvatarBytes }
+                    ?: cacheManager.getAvatarFile(localUserKey, "512")?.takeIf { it.exists() && it.length() <= maxSyncedAvatarBytes }
+                    ?: cacheManager.getAvatarFile(localUserKey, "256")?.takeIf { it.exists() }
+                    ?: cacheManager.getAvatarFile(localUserKey, "thumb")?.takeIf { it.exists() }
+                    ?: return
                 if (file.exists()) {
                     val bytes = file.readBytes()
                     val b64 = java.util.Base64.getEncoder().encodeToString(bytes)
@@ -108,7 +116,7 @@ class ProfileSyncManager(
             try {
                 val bytes = java.util.Base64.getDecoder().decode(dataB64)
                 val cacheManager = ProfileCacheManagerImpl(context)
-                val file = cacheManager.saveAvatarBytes(senderKey, "original", bytes, extension)
+                val file = cacheManager.saveAvatarBytes(senderKey, "1024", bytes, extension)
 
                 // Update the database with the local path
                 val updatedProfile = profile.copy(avatarLocalPath = file.absolutePath)

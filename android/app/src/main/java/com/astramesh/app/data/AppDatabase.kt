@@ -161,7 +161,7 @@ interface MessageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertAll(messages: List<MessageEntity>)
 
-    @Query("SELECT * FROM messages WHERE direction = 'sent' AND status = 'pending' AND retryCount < 5")
+    @Query("SELECT * FROM messages WHERE direction = 'sent' AND status = 'pending' AND retryCount < 40")
     fun getPendingMessages(): List<MessageEntity>
 
     @Query("UPDATE messages SET retryCount = retryCount + 1 WHERE messageId = :messageId")

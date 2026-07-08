@@ -38,7 +38,9 @@ object MeshProtocol {
     const val TYPE_ICE_CANDIDATE = "ice_candidate"
     
     const val DEFAULT_TTL = 5
-    const val MAX_FRAME_BYTES = 64 * 1024
+    // Single encrypted frames are for chat/control metadata, not large media.
+    // Large files still use the chunked media-transfer pipeline.
+    const val MAX_FRAME_BYTES = 2 * 1024 * 1024
 
     private val hexRegex = Regex("^[0-9a-f]+$")
 

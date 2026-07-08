@@ -1,5 +1,6 @@
 package com.astramesh.app.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -63,6 +64,15 @@ fun MainScreen(
     val bottomNavController = rememberNavController()
     val navBackStackEntry by bottomNavController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    if (currentRoute != null && currentRoute != "chats") {
+        BackHandler {
+            bottomNavController.navigate("chats") {
+                popUpTo(bottomNavController.graph.startDestinationId) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
 
     Scaffold(
         bottomBar = {

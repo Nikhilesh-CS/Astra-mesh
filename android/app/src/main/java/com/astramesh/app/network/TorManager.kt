@@ -21,6 +21,10 @@ class TorManager(private val context: Context) {
         private const val SOCKS_PORT = 9050
         private const val CONTROL_PORT = 9051
         private const val LOCAL_PORT = 8765
+        private const val WATCHDOG_INTERVAL_MS = 15_000L
+        private const val BOOTSTRAP_TIMEOUT_MS = 120_000L
+        private const val RESTART_BASE_DELAY_MS = 2_000L
+        private const val RESTART_MAX_DELAY_MS = 60_000L
     }
 
     private val _torState = MutableStateFlow<TorState>(TorState.Idle)
@@ -54,6 +58,11 @@ class TorManager(private val context: Context) {
     @Volatile
     private var torProcess: Process? = null
     private var isRunning = AtomicBoolean(false)
+    @Volatile
+    private var processStartedAtMs: Long = 0L
+    private var restartAttempts = 0
+    private var restartJob: Job? = null
+    private var watchdogJob: Job? = null
 
     private fun addTorLog(msg: String) {
         val current = _torLogs.value.toMutableList()
@@ -94,9 +103,11 @@ class TorManager(private val context: Context) {
         }
         
         addTorLog("[TOR] Starting process")
+        _lastError.value = null
         updateState(TorState.Starting(0, "Initializing Tor..."))
         
         startLocalServer()
+        ensureWatchdog()
 
         scope.launch {
             try {
@@ -137,6 +148,7 @@ class TorManager(private val context: Context) {
                             if (!extracted) {
                                 _lastError.value = "Tor binary not found in native or assets"
                                 addTorLog("[ERROR] Tor binary missing")
+                                isRunning.set(false)
                                 updateState(TorState.Failed("Tor binary not found"))
                                 return@launch
                             }
@@ -173,6 +185,7 @@ class TorManager(private val context: Context) {
                     if (!versionCheck.success) {
                         _lastError.value = versionCheck.output
                         addTorLog("[TOR] Execution test failed: ${versionCheck.output}")
+                        isRunning.set(false)
                         updateState(TorState.Failed("Tor execution test failed"))
                         return@launch
                     }
@@ -213,6 +226,7 @@ class TorManager(private val context: Context) {
 
                 val process = pb.start()
                 torProcess = process
+                processStartedAtMs = System.currentTimeMillis()
                 
                 if (!isRunning.get()) {
                     process.destroy()
@@ -241,6 +255,7 @@ class TorManager(private val context: Context) {
                                             val onion = hostnameFile.readText().trim()
                                             _onionAddress.value = onion
                                             _isTorReady.value = true
+                                            restartAttempts = 0
                                             addTorLog("[TOR] Hidden service created")
                                             addTorLog("[TOR] Onion address generated: $onion")
                                             updateState(TorState.Connected(onion))
@@ -252,12 +267,13 @@ class TorManager(private val context: Context) {
                                                 val onion = hostnameFile.readText().trim()
                                                 _onionAddress.value = onion
                                                 _isTorReady.value = true
+                                                restartAttempts = 0
                                                 addTorLog("[TOR] Hidden service created")
                                                 addTorLog("[TOR] Onion address generated: $onion")
                                                 updateState(TorState.Connected(onion))
                                             } else {
                                                 _lastError.value = "Hidden service hostname file missing"
-                                                updateState(TorState.Failed("Hidden service hostname file missing"))
+                                                scheduleRestart("Hidden service hostname file missing")
                                             }
                                         }
                                     } else {
@@ -276,20 +292,18 @@ class TorManager(private val context: Context) {
                 addTorLog("[PROCESS] Tor process exited with code: ${process.exitValue()}")
                 if (isRunning.get()) {
                     _lastError.value = "Tor process exited unexpectedly (code ${process.exitValue()})"
-                    updateState(TorState.Failed("Tor process exited unexpectedly (code ${process.exitValue()})"))
                     _isTorReady.value = false
-                    // Attempt auto-restart after a delay
-                    delay(10_000)
-                    if (isRunning.get()) {
-                        addTorLog("[RESTART] Attempting automatic restart...")
-                        isRunning.set(false)
-                        start()
-                    }
+                    scheduleRestart("Tor process exited unexpectedly (code ${process.exitValue()})")
                 }
             } catch (e: Exception) {
                 _lastError.value = e.message ?: "Unknown error"
                 addTorLog("[ERROR] Tor process failed: ${e.message}")
-                updateState(TorState.Failed(e.message ?: "Unknown error"))
+                _isTorReady.value = false
+                if (isRunning.get()) {
+                    scheduleRestart(e.message ?: "Unknown error")
+                } else {
+                    updateState(TorState.Failed(e.message ?: "Unknown error"))
+                }
             }
         }
     }
@@ -297,10 +311,74 @@ class TorManager(private val context: Context) {
     fun stop() {
         addTorLog("[STOP] Stopping Tor...")
         isRunning.set(false)
+        restartJob?.cancel()
+        watchdogJob?.cancel()
+        restartJob = null
+        watchdogJob = null
         socketServer?.stop()
         torProcess?.destroy()
         _isTorReady.value = false
         updateState(TorState.Stopped)
+    }
+
+    private fun ensureWatchdog() {
+        if (watchdogJob?.isActive == true) return
+        watchdogJob = scope.launch {
+            while (isActive && isRunning.get()) {
+                delay(WATCHDOG_INTERVAL_MS)
+                if (!isRunning.get()) break
+
+                val process = torProcess
+                val alive = process?.isAliveCompat() == true
+                val state = _torState.value
+                when {
+                    process != null && !alive -> {
+                        _isTorReady.value = false
+                        scheduleRestart("Tor process is not alive")
+                    }
+                    state is TorState.Starting &&
+                        processStartedAtMs > 0L &&
+                        System.currentTimeMillis() - processStartedAtMs > BOOTSTRAP_TIMEOUT_MS -> {
+                        addTorLog("[WATCHDOG] Bootstrap timed out; restarting Tor")
+                        _isTorReady.value = false
+                        process?.destroy()
+                        scheduleRestart("Tor bootstrap timed out")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun scheduleRestart(reason: String) {
+        if (!isRunning.get()) return
+        if (restartJob?.isActive == true) return
+        restartAttempts += 1
+        val delayMs = restartDelayMillis(restartAttempts)
+        addTorLog("[RESTART] $reason. Retrying in ${delayMs}ms")
+        updateState(TorState.Reconnecting(reason, restartAttempts))
+        restartJob = scope.launch {
+            delay(delayMs)
+            if (!isRunning.get()) return@launch
+            torProcess?.destroy()
+            torProcess = null
+            _isTorReady.value = false
+            isRunning.set(false)
+            start()
+        }
+    }
+
+    private fun restartDelayMillis(attempt: Int): Long {
+        val multiplier = 1L shl (attempt - 1).coerceIn(0, 5)
+        return (RESTART_BASE_DELAY_MS * multiplier).coerceAtMost(RESTART_MAX_DELAY_MS)
+    }
+
+    private fun Process.isAliveCompat(): Boolean {
+        return try {
+            exitValue()
+            false
+        } catch (_: IllegalThreadStateException) {
+            true
+        }
     }
 
     /**

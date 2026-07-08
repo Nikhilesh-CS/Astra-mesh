@@ -91,15 +91,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        permissionsGranted = requiredPermissions.all {
-            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
-        }
-
-        if (permissionsGranted) {
-            startAndBindService()
-        } else {
-            requestNearbyPermissions()
-        }
+        permissionsGranted = true
+        startAndBindService()
 
         setContent {
             val settingsManager = remember { com.astramesh.app.data.SettingsManager(this@MainActivity) }
@@ -118,8 +111,6 @@ class MainActivity : ComponentActivity() {
                         PermissionsScreen(onRetry = { requestNearbyPermissions() })
                         return@Surface
                     }
-
-                    BatteryOptimizationPrompt()
 
                     val service = meshService
                     if (service == null || !serviceBound) {

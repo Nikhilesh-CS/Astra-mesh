@@ -28,7 +28,7 @@ class MessageRouter(
     companion object {
         private const val TAG = "MessageRouter"
         private const val RETRY_INTERVAL_MS = 30_000L // 30 seconds
-        private const val MAX_RETRIES = 5
+        private const val MAX_RETRIES = 40
         private const val RELAY_CACHE_TTL_MS = 10 * 60 * 1000L
         private const val MAX_RELAY_CACHE_SIZE = 512
     }
@@ -38,6 +38,8 @@ class MessageRouter(
     var myOnionAddress: String = ""
 
     private var retryJob: Job? = null
+    @Volatile
+    private var retryIntervalMs: Long = RETRY_INTERVAL_MS
     private val recentRelayFingerprints = LinkedHashMap<String, Long>()
 
     // ──────────────────────── INCOMING HANDLERS ────────────────────────
@@ -299,7 +301,7 @@ class MessageRouter(
         retryJob = scope.launch(Dispatchers.IO) {
             Log.d(TAG, "[RETRY] Starting retry loop")
             while (isActive) {
-                delay(RETRY_INTERVAL_MS)
+                delay(retryIntervalMs)
                 try {
                     retryPendingMessages()
                 } catch (e: Exception) {
@@ -346,6 +348,20 @@ class MessageRouter(
                     db.messageDao().updateMessageStatus(msg.messageId, "failed")
                     Log.e(TAG, "[RETRY] Message ${msg.messageId} permanently failed after $MAX_RETRIES retries")
                 }
+            }
+        }
+    }
+
+    fun setBackgroundRetryInterval(intervalMs: Long) {
+        retryIntervalMs = intervalMs.coerceIn(10_000L, 120_000L)
+    }
+
+    fun retryPendingNow() {
+        scope.launch(Dispatchers.IO) {
+            try {
+                retryPendingMessages()
+            } catch (e: Exception) {
+                Log.e(TAG, "[RETRY] Immediate retry failed", e)
             }
         }
     }

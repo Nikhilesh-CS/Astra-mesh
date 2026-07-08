@@ -34,5 +34,6 @@ data class ListenTogetherEvent(
     val peerKey: String,
     val eventType: ListenTogetherEventType,
     val positionMs: Long,
+    val track: DetectedMusicTrack? = null,
     val sentAt: Long = System.currentTimeMillis()
 )

@@ -89,7 +89,15 @@ fun DebugScreen(
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = DarkSurface)) {
                     Column(modifier = Modifier.padding(AstraTheme.spacing.standard)) {
-                        Text("Tor Status: ${if (torState is TorState.Connected) "Connected" else if (torState is TorState.Failed) "Failed" else "Starting"}", color = AccentCyan)
+                        val torStatusLabel = when (torState) {
+                            is TorState.Connected -> "Connected"
+                            is TorState.Reconnecting -> "Reconnecting"
+                            is TorState.Failed -> "Failed"
+                            is TorState.Starting -> "Starting"
+                            TorState.Idle -> "Idle"
+                            TorState.Stopped -> "Stopped"
+                        }
+                        Text("Tor Status: $torStatusLabel", color = AccentCyan)
                         val progress = if (torState is TorState.Starting) (torState as TorState.Starting).progress else if (torState is TorState.Connected) 100 else 0
                         Text("Bootstrap: $progress%", color = SoftWhite)
                         Text("My Onion: ${if (onionAddress.isNotBlank()) onionAddress else "N/A"}", color = SoftWhite)

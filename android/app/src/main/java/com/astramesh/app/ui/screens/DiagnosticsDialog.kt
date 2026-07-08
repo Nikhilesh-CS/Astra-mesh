@@ -32,7 +32,6 @@ fun DiagnosticsDialog(
     val torState by torManager.torState.collectAsStateWithLifecycle()
     val torStatus by torManager.torStatus.collectAsStateWithLifecycle()
     val onionAddress by torManager.onionAddress.collectAsStateWithLifecycle()
-    val isTorReady by torManager.isTorReady.collectAsStateWithLifecycle()
 
     val connectedEndpoints by nearbyManager.connectedEndpoints.collectAsStateWithLifecycle()
     val connectionStatus by nearbyManager.connectionStatus.collectAsStateWithLifecycle()
@@ -58,6 +57,7 @@ fun DiagnosticsDialog(
                                 when (torState) {
                                     is TorState.Connected -> NeonGreen
                                     is TorState.Starting -> AccentCyan
+                                    is TorState.Reconnecting -> AccentViolet
                                     is TorState.Failed -> AccentPink
                                     else -> DimGray
                                 }

@@ -114,6 +114,7 @@ fun ChatListScreen(
     var contactToDelete by remember { mutableStateOf<ContactEntity?>(null) }
     var showCreateMusicNote by remember { mutableStateOf(false) }
     var selectedMusicNote by remember { mutableStateOf<MusicNoteEntity?>(null) }
+    var listenTogetherNote by remember { mutableStateOf<MusicNoteEntity?>(null) }
     val mySigningKey = remember(identityManager) {
         identityManager.loadIdentity()?.let { CryptoManager.toHex(it.signingPublicKey) }.orEmpty()
     }
@@ -407,14 +408,21 @@ fun ChatListScreen(
                 Toast.makeText(context, "Music Note deleted", Toast.LENGTH_SHORT).show()
             },
             onListenTogether = {
-                val service = com.astramesh.app.service.AstraMeshService.getInstance()
-                service?.listenTogetherManager?.inviteSession(note.authorPublicKey, note.noteId, note.playbackPositionMs)
-                val opened = musicResolver.openTrack(note.toDetectedTrack())
-                Toast.makeText(
-                    context,
-                    if (opened) "Listen Together invite sent" else "Invite sent. Open the song in your music app.",
-                    Toast.LENGTH_SHORT
-                ).show()
+                listenTogetherNote = note
+            }
+        )
+    }
+
+    listenTogetherNote?.let { note ->
+        ListenTogetherContactPicker(
+            contacts = contacts.filter { it.signingPublicKey != mySigningKey },
+            onDismiss = { listenTogetherNote = null },
+            onSelect = { contact ->
+                listenTogetherManager?.inviteSession(contact.signingPublicKey, note)
+                musicResolver.openTrack(note.toDetectedTrack())
+                listenTogetherNote = null
+                selectedMusicNote = null
+                Toast.makeText(context, "Listen Together invite sent to ${contact.name}", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -430,8 +438,9 @@ fun ChatListScreen(
                     val state = listenTogetherState
                     scope.launch {
                         val note = withContext(Dispatchers.IO) { db.musicNoteDao().getNote(state.noteId) }
-                        if (note != null) {
-                            musicResolver.openTrack(note.toDetectedTrack())
+                        val track = note?.toDetectedTrack() ?: state.lastEvent?.track
+                        if (track != null) {
+                            musicResolver.openTrack(track)
                             listenTogetherManager?.acceptIncomingInvite()
                             Toast.makeText(context, "Listen Together accepted", Toast.LENGTH_SHORT).show()
                         } else {
@@ -447,6 +456,29 @@ fun ChatListScreen(
                 TextButton(onClick = { listenTogetherManager?.rejectIncomingInvite() }) {
                     Text("Reject")
                 }
+            }
+        )
+    }
+
+    if (listenTogetherState.active || listenTogetherState.awaitingResponse) {
+        ListenTogetherSessionDialog(
+            state = listenTogetherState,
+            peerName = contacts.firstOrNull { it.signingPublicKey == listenTogetherState.peerKey }?.name ?: "Astra contact",
+            onDismiss = { },
+            onPlay = {
+                val state = listenTogetherState
+                listenTogetherManager?.sendEvent(state.peerKey, state.noteId, state.sessionId, com.astramesh.app.music.ListenTogetherEventType.PLAY, state.lastEvent?.positionMs ?: 0L)
+            },
+            onPause = {
+                val state = listenTogetherState
+                listenTogetherManager?.sendEvent(state.peerKey, state.noteId, state.sessionId, com.astramesh.app.music.ListenTogetherEventType.PAUSE, state.lastEvent?.positionMs ?: 0L)
+            },
+            onSync = {
+                val state = listenTogetherState
+                listenTogetherManager?.sendEvent(state.peerKey, state.noteId, state.sessionId, com.astramesh.app.music.ListenTogetherEventType.POSITION_SYNC, state.lastEvent?.positionMs ?: 0L)
+            },
+            onEnd = {
+                listenTogetherManager?.endSession()
             }
         )
     }
@@ -511,6 +543,105 @@ private fun PremiumSectionHeader(title: String, accent: Color) {
             maxLines = 1
         )
     }
+}
+
+@Composable
+private fun ListenTogetherContactPicker(
+    contacts: List<ContactEntity>,
+    onDismiss: () -> Unit,
+    onSelect: (ContactEntity) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Listen Together") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Choose who should receive the listening invite.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (contacts.isEmpty()) {
+                    Text("No contacts available.", color = MaterialTheme.colorScheme.error)
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 320.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(contacts, key = { it.signingPublicKey }) { contact ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
+                                    .clickable { onSelect(contact) }
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AstraAvatar(name = contact.name, size = 42.dp)
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(contact.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        if (contact.onionAddress.isNotBlank()) "Tor route available" else "Nearby/contact route",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+private fun ListenTogetherSessionDialog(
+    state: com.astramesh.app.music.ListenTogetherState,
+    peerName: String,
+    onDismiss: () -> Unit,
+    onPlay: () -> Unit,
+    onPause: () -> Unit,
+    onSync: () -> Unit,
+    onEnd: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (state.awaitingResponse) "Waiting for $peerName" else "Listening with $peerName") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    if (state.awaitingResponse) "Invite sent. Waiting for accept or reject."
+                    else "Playback events are synchronized as encrypted metadata. Audio stays inside each music app.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                state.lastEvent?.track?.let { track ->
+                    Text(track.trackName, fontWeight = FontWeight.Bold)
+                    Text(track.artist, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        },
+        confirmButton = {
+            if (state.active) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onPlay) { Text("Play") }
+                    TextButton(onClick = onPause) { Text("Pause") }
+                    TextButton(onClick = onSync) { Text("Sync") }
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onEnd) {
+                Text(if (state.awaitingResponse) "Cancel" else "End")
+            }
+        }
+    )
 }
 
 @Composable
@@ -692,14 +823,21 @@ private fun CreateMusicNoteDialog(
     var manualTitle by remember { mutableStateOf("") }
     var manualArtist by remember { mutableStateOf("") }
     var manualProvider by remember { mutableStateOf("Manual") }
+    var hasAutoDetectAccess by remember { mutableStateOf(mediaSessionListener.hasNotificationAccess()) }
+    var showAutoDetectExplanation by remember { mutableStateOf(false) }
 
-    LaunchedEffect(refreshKey) {
-        track = mediaSessionListener.detectCurrentTrack()
+    LaunchedEffect(refreshKey, hasAutoDetectAccess) {
+        track = if (hasAutoDetectAccess) {
+            mediaSessionListener.detectCurrentTrack()
+        } else {
+            null
+        }
     }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                hasAutoDetectAccess = mediaSessionListener.hasNotificationAccess()
                 refreshKey++
             }
         }
@@ -714,19 +852,18 @@ private fun CreateMusicNoteDialog(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 val currentTrack = track
                 if (currentTrack == null) {
-                    val hasAccess = mediaSessionListener.hasNotificationAccess()
                     Text(
-                        if (hasAccess) "Start playing music to create a Music Note."
-                        else "Music access is blocked on this device. You can enter the song manually.",
+                        "Enter the song manually. Auto Detect is optional and only reads active music metadata after you enable it.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { refreshKey++ }) {
-                            Text("Refresh")
-                        }
-                        if (!hasAccess) {
-                            TextButton(onClick = { context.startActivity(mediaSessionListener.notificationAccessIntent()) }) {
-                                Text("Enable access")
+                        if (hasAutoDetectAccess) {
+                            TextButton(onClick = { refreshKey++ }) {
+                                Text("Refresh")
+                            }
+                        } else {
+                            TextButton(onClick = { showAutoDetectExplanation = true }) {
+                                Text("Enable Auto Detect")
                             }
                         }
                     }
@@ -816,6 +953,33 @@ private fun CreateMusicNoteDialog(
             }
         }
     )
+
+    if (showAutoDetectExplanation) {
+        AlertDialog(
+            onDismissRequest = { showAutoDetectExplanation = false },
+            title = { Text("Enable Auto Detect?") },
+            text = {
+                Text(
+                    "Android controls music detection through Notification Listener access. ASTRA Mesh uses it only to read the currently playing song title, artist, music app, and artwork. Manual Music Notes work without this permission."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showAutoDetectExplanation = false
+                        context.startActivity(mediaSessionListener.notificationAccessIntent())
+                    }
+                ) {
+                    Text("Open Settings")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAutoDetectExplanation = false }) {
+                    Text("Not now")
+                }
+            }
+        )
+    }
 }
 
 @Composable

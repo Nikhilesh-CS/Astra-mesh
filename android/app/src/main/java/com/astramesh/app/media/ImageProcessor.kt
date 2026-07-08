@@ -14,6 +14,7 @@ data class ProcessedAvatar(
     val hash: String,
     val originalBytes: ByteArray,
     val originalExtension: String,
+    val size1024Bytes: ByteArray,
     val size512Bytes: ByteArray,
     val size256Bytes: ByteArray,
     val thumbBytes: ByteArray
@@ -31,6 +32,7 @@ class ImageProcessor(private val context: Context) {
             val bitmap = decodeSampledBitmapFromUri(uri, 2048, 2048)
                 ?: return@withContext Result.failure(Exception("Failed to decode image"))
 
+            val size1024WebP = compressToWebP(Bitmap.createScaledBitmap(bitmap, 1024, 1024, true), 94)
             val size512WebP = compressToWebP(Bitmap.createScaledBitmap(bitmap, 512, 512, true), 92)
             val size256WebP = compressToWebP(Bitmap.createScaledBitmap(bitmap, 256, 256, true), 90)
             val thumbWebP = compressToWebP(Bitmap.createScaledBitmap(bitmap, 96, 96, true), 88)
@@ -40,6 +42,7 @@ class ImageProcessor(private val context: Context) {
                     hash = hash,
                     originalBytes = originalBytes,
                     originalExtension = extensionForUri(uri),
+                    size1024Bytes = size1024WebP,
                     size512Bytes = size512WebP,
                     size256Bytes = size256WebP,
                     thumbBytes = thumbWebP

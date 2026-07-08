@@ -1,5 +1,9 @@
 package com.astramesh.app.music
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import com.astramesh.app.crypto.CryptoManager
 import com.astramesh.app.data.AppDatabase
 import com.astramesh.app.data.MusicNoteEntity
@@ -12,16 +16,21 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
 
 class MusicNoteManager(
+    private val context: Context,
     private val scope: CoroutineScope,
     private val db: AppDatabase,
     private val identityManager: IdentityManager,
     private val repository: MusicNoteRepository,
     private val messageRouter: MessageRouter
 ) {
+    private val maxAlbumArtBytes = 192 * 1024
+
     val activeNotes: Flow<List<MusicNoteEntity>> = repository.observeActiveNotes()
 
     fun publishCurrentNote(
@@ -34,6 +43,7 @@ class MusicNoteManager(
             val identity = identityManager.loadIdentity() ?: return@launch
             val authorKey = CryptoManager.toHex(identity.signingPublicKey)
             val now = System.currentTimeMillis()
+            val albumArtUri = persistLocalAlbumArt(track.albumArtUri, track.trackId) ?: track.albumArtUri
             val note = MusicNoteEntity(
                 noteId = UUID.randomUUID().toString(),
                 authorId = authorKey,
@@ -45,7 +55,7 @@ class MusicNoteManager(
                 trackName = track.trackName,
                 artist = track.artist,
                 album = track.album,
-                albumArtUri = track.albumArtUri,
+                albumArtUri = albumArtUri,
                 provider = track.provider,
                 playbackPositionMs = track.playbackPositionMs,
                 createdAt = now,
@@ -81,6 +91,12 @@ class MusicNoteManager(
                     repository.removeNotesByAuthor(senderKey)
                     return@runCatching
                 }
+                val albumArtData = json.optString("albumArtData", "")
+                val albumArtUri = if (albumArtData.isNotBlank()) {
+                    saveRemoteAlbumArt(senderKey, json.optString("trackId", ""), albumArtData)
+                } else {
+                    json.optString("albumArtUri").takeIf { it.isNotBlank() }
+                }
                 val note = MusicNoteEntity(
                     noteId = json.getString("noteId"),
                     authorId = senderKey,
@@ -92,7 +108,7 @@ class MusicNoteManager(
                     trackName = json.optString("trackName", "Unknown track"),
                     artist = json.optString("artist", "Unknown artist"),
                     album = json.optString("album", ""),
-                    albumArtUri = json.optString("albumArtUri").takeIf { it.isNotBlank() },
+                    albumArtUri = albumArtUri,
                     provider = json.optString("provider", ""),
                     playbackPositionMs = json.optLong("playbackPositionMs", 0L),
                     createdAt = json.optLong("createdAt", System.currentTimeMillis()),
@@ -144,6 +160,7 @@ class MusicNoteManager(
             .put("artist", note.artist)
             .put("album", note.album)
             .put("albumArtUri", note.albumArtUri ?: "")
+            .put("albumArtData", encodeAlbumArt(note.albumArtUri))
             .put("provider", note.provider)
             .put("playbackPositionMs", note.playbackPositionMs)
             .put("createdAt", note.createdAt)
@@ -164,5 +181,80 @@ class MusicNoteManager(
         val body = "${note.noteId}|${note.authorPublicKey}|${note.trackId}|${note.trackName}|${note.artist}|${note.createdAt}|${note.expiresAt}"
         val digest = MessageDigest.getInstance("SHA-256").digest(body.toByteArray())
         return digest.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun persistLocalAlbumArt(albumArtUri: String?, trackId: String): String? {
+        val bytes = readOptimizedAlbumArt(albumArtUri) ?: return null
+        val file = albumArtFile("local", trackId)
+        return runCatching {
+            file.parentFile?.mkdirs()
+            file.writeBytes(bytes)
+            file.absolutePath
+        }.getOrNull()
+    }
+
+    private fun encodeAlbumArt(albumArtUri: String?): String {
+        val file = albumArtUri?.let { File(it) }
+        val bytes = if (file != null && file.exists() && file.length() <= maxAlbumArtBytes) {
+            file.readBytes()
+        } else {
+            readOptimizedAlbumArt(albumArtUri)
+        } ?: return ""
+        if (bytes.size > maxAlbumArtBytes) return ""
+        return java.util.Base64.getEncoder().encodeToString(bytes)
+    }
+
+    private fun saveRemoteAlbumArt(senderKey: String, trackId: String, dataB64: String): String? {
+        return runCatching {
+            val bytes = java.util.Base64.getDecoder().decode(dataB64)
+            if (bytes.isEmpty() || bytes.size > maxAlbumArtBytes) return@runCatching null
+            val file = albumArtFile(senderKey, trackId)
+            file.parentFile?.mkdirs()
+            file.writeBytes(bytes)
+            file.absolutePath
+        }.getOrNull()
+    }
+
+    private fun readOptimizedAlbumArt(albumArtUri: String?): ByteArray? {
+        if (albumArtUri.isNullOrBlank()) return null
+        return runCatching {
+            val bitmap = openAlbumArtStream(albumArtUri)?.use { stream ->
+                BitmapFactory.decodeStream(stream)
+            } ?: return@runCatching null
+            val scaled = scaleToMax(bitmap, 512)
+            val output = ByteArrayOutputStream()
+            val format = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                Bitmap.CompressFormat.WEBP_LOSSY
+            } else {
+                @Suppress("DEPRECATION")
+                Bitmap.CompressFormat.WEBP
+            }
+            scaled.compress(format, 88, output)
+            output.toByteArray().takeIf { it.size <= maxAlbumArtBytes }
+        }.getOrNull()
+    }
+
+    private fun openAlbumArtStream(albumArtUri: String): java.io.InputStream? {
+        val file = File(albumArtUri)
+        if (file.exists()) return file.inputStream()
+        val uri = Uri.parse(albumArtUri)
+        return context.contentResolver.openInputStream(uri)
+    }
+
+    private fun scaleToMax(bitmap: Bitmap, maxSide: Int): Bitmap {
+        val largestSide = maxOf(bitmap.width, bitmap.height)
+        if (largestSide <= maxSide) return bitmap
+        val scale = maxSide.toFloat() / largestSide.toFloat()
+        val width = (bitmap.width * scale).toInt().coerceAtLeast(1)
+        val height = (bitmap.height * scale).toInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(bitmap, width, height, true)
+    }
+
+    private fun albumArtFile(ownerKey: String, trackId: String): File {
+        val source = "$ownerKey:$trackId:${System.currentTimeMillis() / 86_400_000L}"
+        val hash = MessageDigest.getInstance("SHA-256")
+            .digest(source.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        return File(File(context.filesDir, "music_art").apply { mkdirs() }, "$hash.webp")
     }
 }
