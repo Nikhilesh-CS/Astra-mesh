@@ -65,7 +65,8 @@ fun SettingsScreen(
     navController: NavController,
     onionAddress: String,
     db: AppDatabase,
-    settingsManager: SettingsManager
+    settingsManager: SettingsManager,
+    onNavigateBack: () -> Unit = { navController.navigateUp() }
 ) {
     val context = LocalContext.current
     var identity by remember { mutableStateOf(identityManager.loadIdentity()) }
@@ -220,7 +221,7 @@ fun SettingsScreen(
             TopAppBar(
                 title = { Text("Settings", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground) },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onBackground)
                     }
                 },

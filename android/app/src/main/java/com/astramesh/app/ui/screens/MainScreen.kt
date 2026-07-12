@@ -134,7 +134,14 @@ fun MainScreen(
                     navController = rootNavController,
                     onionAddress = onionAddress,
                     db = db,
-                    settingsManager = settingsManager
+                    settingsManager = settingsManager,
+                    onNavigateBack = {
+                        bottomNavController.navigate("chats") {
+                            popUpTo(bottomNavController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
                 )
             }
         }

@@ -260,7 +260,12 @@ class MainActivity : ComponentActivity() {
                                 navController = navController,
                                 onionAddress = onionAddress,
                                 db = service.db,
-                                settingsManager = service.settingsManager
+                                settingsManager = service.settingsManager,
+                                onNavigateBack = {
+                                    if (!navController.navigateUp()) {
+                                        navController.popBackStack()
+                                    }
+                                }
                             )
                         }
                         composable("debug") {

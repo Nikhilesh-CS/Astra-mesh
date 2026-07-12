@@ -651,11 +651,17 @@ class MessageRouter(
             return
         }
 
+        val service = com.astramesh.app.service.AstraMeshService.getInstance()
+        if (messageType != MeshProtocol.TYPE_PROFILE_UPDATE &&
+            messageType != MeshProtocol.TYPE_REQUEST_PROFILE_PHOTO &&
+            messageType != MeshProtocol.TYPE_PROFILE_PHOTO_CHUNK) {
+            service?.profileSyncManager?.syncWithContactSoon(senderKey)
+        }
+
         if (messageType == MeshProtocol.TYPE_MEDIA_CHUNK || 
             messageType == MeshProtocol.TYPE_MEDIA_OFFER || 
             messageType == MeshProtocol.TYPE_MEDIA_ACK ||
             messageType == MeshProtocol.TYPE_MEDIA_COMPLETE) {
-            val service = com.astramesh.app.service.AstraMeshService.getInstance()
             service?.mediaTransferManager?.handleMediaPacket(messageType, plaintext, senderKey)
             return
         }
@@ -663,7 +669,6 @@ class MessageRouter(
         if (messageType == MeshProtocol.TYPE_CALL_OFFER ||
             messageType == MeshProtocol.TYPE_CALL_ANSWER ||
             messageType == MeshProtocol.TYPE_ICE_CANDIDATE) {
-            val service = com.astramesh.app.service.AstraMeshService.getInstance()
             service?.callManager?.handleSignal(messageType, plaintext, senderKey)
             return
         }
@@ -671,7 +676,6 @@ class MessageRouter(
         if (messageType == MeshProtocol.TYPE_PROFILE_UPDATE ||
             messageType == MeshProtocol.TYPE_REQUEST_PROFILE_PHOTO ||
             messageType == MeshProtocol.TYPE_PROFILE_PHOTO_CHUNK) {
-            val service = com.astramesh.app.service.AstraMeshService.getInstance()
             service?.profileSyncManager?.handleProfilePacket(messageType, plaintext, senderKey)
             return
         }
@@ -682,19 +686,16 @@ class MessageRouter(
         }
 
         if (messageType == MeshProtocol.TYPE_PRESENCE) {
-            val service = com.astramesh.app.service.AstraMeshService.getInstance()
             service?.presenceManager?.handlePresencePacket(plaintext, senderKey)
             return
         }
 
         if (messageType == MeshProtocol.TYPE_MUSIC_NOTE) {
-            val service = com.astramesh.app.service.AstraMeshService.getInstance()
             service?.musicNoteManager?.handleMusicNotePacket(plaintext, senderKey)
             return
         }
 
         if (messageType == MeshProtocol.TYPE_MUSIC_SYNC) {
-            val service = com.astramesh.app.service.AstraMeshService.getInstance()
             service?.listenTogetherManager?.handleSyncPacket(plaintext, senderKey)
             return
         }
@@ -726,7 +727,6 @@ class MessageRouter(
             )
         )
 
-        val service = com.astramesh.app.service.AstraMeshService.getInstance()
         if (service != null) {
             val isMuted = contact.muteUntil == -1L || (contact.muteUntil > 0L && System.currentTimeMillis() < contact.muteUntil)
             if (isActiveConversation) {

@@ -1,9 +1,34 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("kotlin-kapt")
     id("jacoco")
 }
+
+val keystoreProperties = Properties().apply {
+    val keystorePropertiesFile = rootProject.file("keystore.properties")
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+
+fun signingProperty(name: String, envName: String): String? {
+    return (keystoreProperties.getProperty(name) ?: System.getenv(envName))
+        ?.takeIf { it.isNotBlank() }
+}
+
+val releaseStoreFilePath = signingProperty("storeFile", "ASTRAMESH_RELEASE_STORE_FILE")
+val releaseStorePassword = signingProperty("storePassword", "ASTRAMESH_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = signingProperty("keyAlias", "ASTRAMESH_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = signingProperty("keyPassword", "ASTRAMESH_RELEASE_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseStoreFilePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword
+).all { !it.isNullOrBlank() }
 
 android {
     namespace = "com.astramesh.app"
@@ -13,17 +38,19 @@ android {
         applicationId = "com.astramesh.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 16
-        versionName = "1.0.12"
+        versionCode = 17
+        versionName = "1.0.13"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file("astramesh.jks")
-            storePassword = "astramesh123"
-            keyAlias = "astramesh"
-            keyPassword = "astramesh123"
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFilePath!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
         }
     }
 
@@ -36,7 +63,11 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
     compileOptions {

@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 
 class ProfileSyncManager(
     private val context: Context,
@@ -20,6 +21,7 @@ class ProfileSyncManager(
     private val scope = CoroutineScope(Dispatchers.IO)
     private val localUserKey = "LOCAL_USER"
     private val maxSyncedAvatarBytes = 512L * 1024L
+    private val lastProfileSyncAt = ConcurrentHashMap<String, Long>()
 
     fun handleProfilePacket(type: String, payload: String, senderKey: String) {
         scope.launch {
@@ -63,6 +65,7 @@ class ProfileSyncManager(
             )
 
             profileRepository.saveContactProfile(newProfile)
+            updateContactName(senderKey, name)
 
             // Check if we need to request the photo
             if (avatarHash.isNotBlank() && avatarHash != currentProfile?.avatarHash) {
@@ -121,6 +124,7 @@ class ProfileSyncManager(
                 // Update the database with the local path
                 val updatedProfile = profile.copy(avatarLocalPath = file.absolutePath)
                 profileRepository.saveContactProfile(updatedProfile)
+                updateContactName(senderKey, profile.name)
                 Log.d(TAG, "Successfully received and saved avatar for $senderKey")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to save received avatar chunk", e)
@@ -141,6 +145,17 @@ class ProfileSyncManager(
             .put("lastUpdatedAt", myProfile.lastUpdatedAt)
             
         messageRouter.sendRawPayload(targetContactKey, json.toString(), MeshProtocol.TYPE_PROFILE_UPDATE)
+    }
+
+    fun syncWithContactSoon(targetContactKey: String) {
+        if (targetContactKey.isBlank()) return
+        val now = System.currentTimeMillis()
+        val lastSync = lastProfileSyncAt[targetContactKey] ?: 0L
+        if (now - lastSync < 30L * 60L * 1000L) return
+        lastProfileSyncAt[targetContactKey] = now
+        scope.launch {
+            broadcastLocalProfile(targetContactKey)
+        }
     }
 
     suspend fun broadcastLocalProfileToAll() {
@@ -174,5 +189,14 @@ class ProfileSyncManager(
             .put("extension", extension)
             .put("data", dataB64)
         messageRouter.sendRawPayload(targetContactKey, json.toString(), MeshProtocol.TYPE_PROFILE_PHOTO_CHUNK)
+    }
+
+    private fun updateContactName(senderKey: String, name: String) {
+        if (name.isBlank()) return
+        val service = com.astramesh.app.service.AstraMeshService.getInstance() ?: return
+        val contact = service.db.contactDao().getContact(senderKey) ?: return
+        if (contact.name != name) {
+            service.db.contactDao().insertContact(contact.copy(name = name))
+        }
     }
 }
