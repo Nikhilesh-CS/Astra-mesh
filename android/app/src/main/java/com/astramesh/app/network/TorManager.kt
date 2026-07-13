@@ -11,7 +11,6 @@ import java.net.Proxy
 import java.net.Socket
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import android.os.Build
 import android.util.Base64
 
 class TorManager(private val context: Context) {
@@ -451,7 +450,7 @@ class TorManager(private val context: Context) {
     }
 
     private fun getActiveTorBinary(): File {
-        return File(context.filesDir, "tor/tor")
+        return findPackagedNativeTor() ?: File(context.filesDir, "tor/tor")
     }
 
     fun testTorBinary(): String {
@@ -501,56 +500,23 @@ class TorManager(private val context: Context) {
     }
 
     private fun resolveTorExecutable(torDir: File): File? {
-        val target = File(torDir, "tor")
-        target.parentFile?.mkdirs()
+        // Modern Android mounts the app data directory with execution blocked. The
+        // APK's native library directory is executable, so run the packaged PIE in
+        // place instead of copying it to filesDir and hitting EACCES (error 13).
+        File(torDir, "tor").delete()
 
-        if (target.exists()) {
-            target.setExecutable(true)
-            val existingCheck = runTorVersionCheck(target)
-            if (existingCheck.success) {
-                addTorLog("[TOR] Using prepared executable from filesDir")
-                return target
-            }
-            addTorLog("[TOR] Existing filesDir executable failed: ${existingCheck.output}")
-            target.delete()
+        val packagedTor = findPackagedNativeTor() ?: run {
+            addTorLog("[TOR] Packaged native Tor not found")
+            return null
         }
+        addTorLog("[TOR] Using packaged native Tor from nativeLibraryDir")
+        addTorLog("[TOR] Packaged native binary type: ${describeBinaryType(packagedTor)}")
 
-        if (extractTorExecutableFromAssets(target)) {
-            target.setExecutable(true)
-            val assetCheck = runTorVersionCheck(target)
-            if (assetCheck.success) {
-                addTorLog("[TOR] Using executable extracted from assets")
-                return target
-            }
-            addTorLog("[TOR] Asset executable failed: ${assetCheck.output}")
-            target.delete()
-        }
+        val versionCheck = runTorVersionCheck(packagedTor)
+        if (versionCheck.success) return packagedTor
 
-        if (copyPackagedNativeTorToExecutable(target)) {
-            target.setExecutable(true)
-            val nativeCheck = runTorVersionCheck(target)
-            if (nativeCheck.success) {
-                addTorLog("[TOR] Using executable prepared from packaged native Tor")
-                return target
-            }
-            addTorLog("[TOR] Packaged native Tor failed: ${nativeCheck.output}")
-            target.delete()
-        }
-
+        addTorLog("[TOR] Packaged native Tor failed: ${versionCheck.output}")
         return null
-    }
-
-    private fun copyPackagedNativeTorToExecutable(target: File): Boolean {
-        val source = findPackagedNativeTor() ?: return false
-        return try {
-            addTorLog("[TOR] Preparing packaged native Tor from ${source.name}")
-            addTorLog("[TOR] Packaged native binary type: ${describeBinaryType(source)}")
-            source.copyTo(target, overwrite = true)
-            true
-        } catch (e: Exception) {
-            addTorLog("[TOR] Failed to prepare packaged native Tor: ${e.message}")
-            false
-        }
     }
 
     private fun findPackagedNativeTor(): File? {
@@ -564,25 +530,6 @@ class TorManager(private val context: Context) {
                     !file.name.contains("crypto", ignoreCase = true) &&
                     !file.name.contains("ssl", ignoreCase = true)
             }
-    }
-
-    private fun extractTorExecutableFromAssets(torBinary: File): Boolean {
-        for (abi in Build.SUPPORTED_ABIS) {
-            try {
-                val assetPath = "tor/$abi/tor"
-                torBinary.parentFile?.mkdirs()
-                context.assets.open(assetPath).use { input ->
-                    torBinary.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                addTorLog("[TOR] Binary found in assets for $abi")
-                return true
-            } catch (_: Exception) {
-                addTorLog("[TOR] No binary in assets for $abi")
-            }
-        }
-        return false
     }
 
     private fun describeBinaryType(file: File): String {

@@ -46,6 +46,8 @@ class ProfileSyncManager(
         val avatarHash = json.optString("avatarHash", "")
         val profileHash = json.optString("profileHash", "")
         val lastUpdatedAt = json.optLong("lastUpdatedAt", 0L)
+        val verifiedBadge = json.optBoolean("verifiedBadge", false) &&
+            FounderProfile.isFounderSigningKey(senderKey)
 
         val currentProfile = profileRepository.getContactProfile(senderKey).firstOrNull()
 
@@ -62,7 +64,8 @@ class ProfileSyncManager(
                 profileHash = profileHash,
                 profileVersion = version,
                 lastUpdatedAt = lastUpdatedAt,
-                avatarLocalPath = currentProfile?.avatarLocalPath.takeUnless { avatarChanged }
+                avatarLocalPath = currentProfile?.avatarLocalPath.takeUnless { avatarChanged },
+                verifiedBadge = verifiedBadge
             )
 
             profileRepository.saveContactProfile(newProfile)
@@ -141,6 +144,7 @@ class ProfileSyncManager(
             .put("avatarHash", myProfile.avatarHash ?: "")
             .put("profileHash", myProfile.profileHash)
             .put("lastUpdatedAt", myProfile.lastUpdatedAt)
+            .put("verifiedBadge", myProfile.verifiedBadge)
             
         messageRouter.sendRawPayload(targetContactKey, json.toString(), MeshProtocol.TYPE_PROFILE_UPDATE)
     }
@@ -167,6 +171,7 @@ class ProfileSyncManager(
             .put("avatarHash", myProfile.avatarHash ?: "")
             .put("profileHash", myProfile.profileHash)
             .put("lastUpdatedAt", myProfile.lastUpdatedAt)
+            .put("verifiedBadge", myProfile.verifiedBadge)
 
         // For now, let's assume we broadcast to all known contacts, 
         // MessageRouter handles whether to relay or use Tor

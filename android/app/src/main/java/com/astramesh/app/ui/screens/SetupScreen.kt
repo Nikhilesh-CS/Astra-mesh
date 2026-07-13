@@ -39,6 +39,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 
@@ -315,7 +316,10 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
                     unfocusedContainerColor = Color.White.copy(alpha = 0.07f)
                 ),
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done
+                ),
                 keyboardActions = KeyboardActions(onDone = { createIdentity() }),
                 textStyle = MaterialTheme.typography.bodyLarge
             )
@@ -401,6 +405,10 @@ fun OnboardingPage4(identityManager: IdentityManager, onIdentityCreated: () -> U
                             onValueChange = { restorePassword = it },
                             label = { Text("Backup Password") },
                             visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Password,
+                                imeAction = ImeAction.Done
+                            ),
                             singleLine = true,
                             enabled = !isRestoring,
                             shape = RoundedCornerShape(20.dp),

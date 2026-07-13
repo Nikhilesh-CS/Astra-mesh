@@ -5,6 +5,7 @@ import android.util.Log
 import com.astramesh.app.crypto.CryptoManager
 import com.astramesh.app.crypto.Identity
 import com.astramesh.app.identity.IdentityManager
+import com.astramesh.app.identity.profile.FounderProfile
 import com.astramesh.app.network.TorManager
 import com.astramesh.app.network.TorState
 import com.astramesh.app.service.AstraMeshService
@@ -110,6 +111,7 @@ class IdentityRestoreManager(private val context: Context) {
 
                 val restoredBio = runCatching { dto.bio }.getOrNull().orEmpty()
                 val restoredStatus = runCatching { dto.statusMessage }.getOrNull().orEmpty()
+                val isFounder = FounderProfile.isFounderSigningKey(CryptoManager.toHex(identity.signingPublicKey))
                 val restoredProfileHash = runCatching { dto.profileHash }
                     .getOrNull()
                     .orEmpty()
@@ -122,13 +124,14 @@ class IdentityRestoreManager(private val context: Context) {
                 val restoredProfile = com.astramesh.app.data.ProfileEntity(
                     ownerKey = "LOCAL_USER",
                     name = identity.name,
-                    bio = restoredBio,
-                    statusMessage = restoredStatus,
+                    bio = if (isFounder && restoredBio.isBlank()) FounderProfile.bio else restoredBio,
+                    statusMessage = if (isFounder && restoredStatus.isBlank()) FounderProfile.statusMessage else restoredStatus,
                     avatarHash = dto.avatarHash,
                     profileHash = restoredProfileHash,
                     profileVersion = restoredProfileVersion,
                     lastUpdatedAt = restoredUpdatedAt,
-                    avatarLocalPath = localAvatarPath
+                    avatarLocalPath = localAvatarPath,
+                    verifiedBadge = isFounder
                 )
                 profileDao.insertProfile(restoredProfile)
                 // db.close() // Room will handle this
@@ -138,12 +141,12 @@ class IdentityRestoreManager(private val context: Context) {
                     service.restartNetworking()
                     
                     // Wait for Tor to boot and verify
-                    val isTorVerified = verifyTorStartup(torManager)
+                    val isTorVerified = verifyTorStartup(torManager, dto.onionAddress)
                     if (!isTorVerified) {
                         throw Exception("Tor failed to initialize with the restored keys.")
                     }
                     
-                    val activeOnion = identityManager.loadOnionAddress()
+                    val activeOnion = torManager.onionAddress.value
                     if (activeOnion != dto.onionAddress) {
                         throw Exception("Onion address mismatch after restore.")
                     }
@@ -188,11 +191,15 @@ class IdentityRestoreManager(private val context: Context) {
         }
     }
 
-    private suspend fun verifyTorStartup(torManager: TorManager): Boolean {
-        // Wait up to 25 seconds for Tor to reach Connected state
-        val timeout = System.currentTimeMillis() + 25_000
+    private suspend fun verifyTorStartup(torManager: TorManager, expectedOnion: String): Boolean {
+        // Tor needs time to download directory information and establish circuits.
+        // A 25-second limit caused valid restored keys to be rolled back while
+        // bootstrap was still in progress on real networks.
+        val timeout = System.currentTimeMillis() + 120_000
         while (System.currentTimeMillis() < timeout) {
-            if (torManager.isTorReady.value) return true
+            if (torManager.isTorReady.value) {
+                return torManager.onionAddress.value == expectedOnion
+            }
             if (torManager.torState.value is TorState.Failed) return false
             delay(500)
         }

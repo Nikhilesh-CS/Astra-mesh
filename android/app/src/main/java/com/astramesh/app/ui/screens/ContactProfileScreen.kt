@@ -37,6 +37,9 @@ import com.astramesh.app.data.AppDatabase
 import com.astramesh.app.data.ContactEntity
 import com.astramesh.app.data.MessageEntity
 import com.astramesh.app.data.ProfileEntity
+import com.astramesh.app.identity.profile.FounderProfile
+import com.astramesh.app.ui.components.FounderBadge
+import com.astramesh.app.ui.components.FounderProfileCard
 import com.astramesh.app.ui.theme.AstraTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -97,9 +100,16 @@ fun ContactProfileScreen(
     val contact = uiState.contact
     val profile = uiState.profile
     val displayName = profile?.name?.takeIf { it.isNotBlank() } ?: contact?.name ?: "Astra contact"
+    val isFounderProfile = FounderProfile.isFounderProfile(contactKey)
     val avatarPath = profile?.avatarLocalPath
-    val status = profile?.statusMessage?.takeIf { it.isNotBlank() } ?: if (contact?.isConnected == true) "Online" else "Offline"
-    val bio = profile?.bio?.takeIf { it.isNotBlank() } ?: "No bio shared yet."
+    val status = when {
+        isFounderProfile -> profile?.statusMessage?.takeIf { it.isNotBlank() } ?: FounderProfile.statusMessage
+        else -> profile?.statusMessage?.takeIf { it.isNotBlank() } ?: if (contact?.isConnected == true) "Online" else "Offline"
+    }
+    val bio = when {
+        isFounderProfile -> profile?.bio?.takeIf { it.isNotBlank() } ?: FounderProfile.bio
+        else -> profile?.bio?.takeIf { it.isNotBlank() } ?: "No bio shared yet."
+    }
     val fingerprint = contactKey.chunked(4).take(8).joinToString(" ")
     var showAvatarViewer by remember { mutableStateOf(false) }
     var showSharedMedia by remember { mutableStateOf(false) }
@@ -173,12 +183,26 @@ fun ContactProfileScreen(
                 Spacer(modifier = Modifier.height(AstraTheme.spacing.large))
 
                 // Name & Status
-                Text(
-                    text = displayName,
-                    style = AstraTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = AstraTheme.spacing.standard),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = displayName,
+                        style = AstraTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (isFounderProfile) {
+                        Spacer(Modifier.width(10.dp))
+                        FounderBadge()
+                    }
+                }
                 
                 Text(
                     text = status,
@@ -188,6 +212,15 @@ fun ContactProfileScreen(
                 )
 
                 Spacer(modifier = Modifier.height(AstraTheme.spacing.extraLarge))
+
+                if (isFounderProfile) {
+                    FounderProfileCard(
+                        modifier = Modifier.padding(horizontal = AstraTheme.spacing.standard),
+                        torConnected = contact?.onionAddress?.isNotBlank() == true,
+                        decentralizedEnabled = true
+                    )
+                    Spacer(modifier = Modifier.height(AstraTheme.spacing.extraLarge))
+                }
 
                 // Action Row (Audio, Video, Search)
                 Row(

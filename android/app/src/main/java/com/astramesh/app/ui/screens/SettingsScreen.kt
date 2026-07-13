@@ -53,7 +53,9 @@ import javax.net.ssl.HttpsURLConnection
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
 import com.astramesh.app.identity.backup.IdentityBackupManager
 import com.astramesh.app.identity.backup.IdentityRestoreManager
 import com.astramesh.app.data.SettingsManager
@@ -620,6 +622,7 @@ fun SettingsScreen(
                         onValueChange = { backupPassword = it },
                         label = { Text("Backup Password", color = MutedGray) },
                         visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         singleLine = true,
                         enabled = !isBackupWorking,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -669,6 +672,7 @@ fun SettingsScreen(
                         onValueChange = { backupPassword = it },
                         label = { Text("Backup Password", color = MutedGray) },
                         visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         singleLine = true,
                         enabled = !isBackupWorking,
                         colors = OutlinedTextFieldDefaults.colors(

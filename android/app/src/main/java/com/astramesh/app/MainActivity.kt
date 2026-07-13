@@ -211,10 +211,18 @@ class MainActivity : ComponentActivity() {
                                     )
                                 } ?: ""
                             }
+                            val profileOnionAddress = service.torManager.onionAddress.value.ifBlank {
+                                service.identityManager.loadOnionAddress().orEmpty()
+                            }
+                            val profileFingerprint = service.identityManager.loadIdentity()?.let { identity ->
+                                com.astramesh.app.crypto.CryptoManager.toHex(identity.signingPublicKey)
+                            }.orEmpty()
                             com.astramesh.app.ui.screens.ProfileScreen(
                                 navController = navController,
                                 viewModel = profileViewModel,
-                                identityQrPayload = identityQrPayload
+                                identityQrPayload = identityQrPayload,
+                                onionAddress = profileOnionAddress,
+                                identityFingerprint = profileFingerprint
                             )
                         }
                         composable("main") {

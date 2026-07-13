@@ -61,19 +61,26 @@ class ProfileRepositoryImpl(
             newAvatarLocalPath = originalFile.absolutePath
         }
 
-        val profileHash = generateProfileHash(name, bio, statusMessage)
+        val localSigningKey = identityManager.loadIdentity()?.let { identity ->
+            com.astramesh.app.crypto.CryptoManager.toHex(identity.signingPublicKey)
+        }.orEmpty()
+        val isFounder = FounderProfile.isFounderSigningKey(localSigningKey)
+        val effectiveBio = if (isFounder && bio.isBlank()) FounderProfile.bio else bio
+        val effectiveStatus = if (isFounder && statusMessage.isBlank()) FounderProfile.statusMessage else statusMessage
+        val profileHash = generateProfileHash(name, effectiveBio, effectiveStatus)
         val newVersion = (currentProfile?.profileVersion ?: 0) + 1
 
         val updatedProfile = ProfileEntity(
             ownerKey = localUserKey,
             name = name,
-            bio = bio,
-            statusMessage = statusMessage,
+            bio = effectiveBio,
+            statusMessage = effectiveStatus,
             avatarHash = newAvatarHash,
             profileHash = profileHash,
             profileVersion = newVersion,
             lastUpdatedAt = System.currentTimeMillis(),
-            avatarLocalPath = newAvatarLocalPath
+            avatarLocalPath = newAvatarLocalPath,
+            verifiedBadge = isFounder
         )
 
         profileDao.insertProfile(updatedProfile)

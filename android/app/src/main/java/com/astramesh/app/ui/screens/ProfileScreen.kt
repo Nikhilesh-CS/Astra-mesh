@@ -27,10 +27,14 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import com.astramesh.app.identity.profile.FounderProfile
+import com.astramesh.app.ui.components.FounderBadge
+import com.astramesh.app.ui.components.FounderProfileCard
 import com.astramesh.app.ui.theme.AstraTheme
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -42,10 +46,13 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 fun ProfileScreen(
     navController: NavController,
     viewModel: ProfileViewModel = viewModel(),
-    identityQrPayload: String = ""
+    identityQrPayload: String = "",
+    onionAddress: String = "",
+    identityFingerprint: String = ""
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
+    val isFounderProfile = FounderProfile.isFounderSigningKey(identityFingerprint)
     
     var cropTargetUri by remember { mutableStateOf<Uri?>(null) }
     var showQrDialog by remember { mutableStateOf(false) }
@@ -164,6 +171,49 @@ fun ProfileScreen(
             }
 
             Spacer(modifier = Modifier.height(AstraTheme.spacing.large))
+
+            if (isFounderProfile) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = uiState.name.ifBlank { "Nikhilesh" },
+                        style = AstraTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    FounderBadge()
+                }
+
+                Spacer(modifier = Modifier.height(AstraTheme.spacing.medium))
+
+                Text(
+                    text = FounderProfile.statusMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(AstraTheme.spacing.large))
+
+                FounderProfileCard(
+                    torConnected = onionAddress.isNotBlank(),
+                    decentralizedEnabled = true
+                )
+
+                if (identityFingerprint.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
+                    Text(
+                        text = "Fingerprint ${identityFingerprint.take(32)}...",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(AstraTheme.spacing.large))
+            }
 
             // Text Fields
             OutlinedTextField(
