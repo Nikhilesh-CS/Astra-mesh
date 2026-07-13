@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -31,6 +32,7 @@ import com.astramesh.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import android.os.Build
+import android.widget.Toast
 import com.astramesh.app.debug.*
 import androidx.compose.ui.platform.LocalContext
 
@@ -40,11 +42,11 @@ fun DebugScreen(
     navController: NavController,
     torManager: TorManager
 ) {
-    val torState by torManager.torState.collectAsState()
-    val onionAddress by torManager.onionAddress.collectAsState()
-    val torLogs by torManager.torLogs.collectAsState()
-    val lastError by torManager.lastError.collectAsState()
-    val lastPing by torManager.lastPing.collectAsState()
+    val torState by torManager.torState.collectAsStateWithLifecycle()
+    val onionAddress by torManager.onionAddress.collectAsStateWithLifecycle()
+    val torLogs by torManager.torLogs.collectAsStateWithLifecycle()
+    val lastError by torManager.lastError.collectAsStateWithLifecycle()
+    val lastPing by torManager.lastPing.collectAsStateWithLifecycle()
 
     var testOnion by remember { mutableStateOf("") }
     var testResult by remember { mutableStateOf<String?>(null) }
@@ -87,7 +89,15 @@ fun DebugScreen(
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = DarkSurface)) {
                     Column(modifier = Modifier.padding(AstraTheme.spacing.standard)) {
-                        Text("Tor Status: ${if (torState is TorState.Connected) "Connected" else if (torState is TorState.Failed) "Failed" else "Starting"}", color = AccentCyan)
+                        val torStatusLabel = when (torState) {
+                            is TorState.Connected -> "Connected"
+                            is TorState.Reconnecting -> "Reconnecting"
+                            is TorState.Failed -> "Failed"
+                            is TorState.Starting -> "Starting"
+                            TorState.Idle -> "Idle"
+                            TorState.Stopped -> "Stopped"
+                        }
+                        Text("Tor Status: $torStatusLabel", color = AccentCyan)
                         val progress = if (torState is TorState.Starting) (torState as TorState.Starting).progress else if (torState is TorState.Connected) 100 else 0
                         Text("Bootstrap: $progress%", color = SoftWhite)
                         Text("My Onion: ${if (onionAddress.isNotBlank()) onionAddress else "N/A"}", color = SoftWhite)
@@ -138,9 +148,7 @@ fun DebugScreen(
                         Text("Phase 1 & 3: Performance & Flow", color = AccentCyan)
                         Button(
                             onClick = { 
-                                scope.launch(Dispatchers.IO) {
-                                    // Requires AppDatabase instance, placeholder
-                                }
+                                Toast.makeText(context, "Stress test requires database wiring", Toast.LENGTH_SHORT).show()
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = AccentViolet),
                             modifier = Modifier.fillMaxWidth()
@@ -171,10 +179,14 @@ fun DebugScreen(
 
                         Text("Phase X: Crash Recovery & Battery", color = AccentCyan)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            Button(onClick = { /* CrashRecoveryEngine.triggerProcessDeath(500) */ }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))) {
+                            Button(onClick = {
+                                scope.launch { CrashRecoveryEngine.triggerProcessDeath(500) }
+                            }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))) {
                                 Text("Kill Process")
                             }
-                            Button(onClick = { /* CrashRecoveryEngine.triggerOOM() */ }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))) {
+                            Button(onClick = {
+                                scope.launch(Dispatchers.Default) { CrashRecoveryEngine.triggerOOM() }
+                            }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))) {
                                 Text("Trigger OOM")
                             }
                         }
@@ -228,3 +240,4 @@ fun DebugScreen(
         }
     }
 }
+

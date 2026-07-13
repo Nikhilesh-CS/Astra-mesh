@@ -4,130 +4,112 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.os.Build
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.security.MessageDigest
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.roundToInt
 
-data class ProcessedImage(
-    val resolution: Int,
-    val data: ByteArray
-)
-
-data class ImagePipelineResult(
-    val avatarHash: String,
-    val images: List<ProcessedImage>
+data class ProcessedAvatar(
+    val hash: String,
+    val originalBytes: ByteArray,
+    val originalExtension: String,
+    val size1024Bytes: ByteArray,
+    val size512Bytes: ByteArray,
+    val size256Bytes: ByteArray,
+    val thumbBytes: ByteArray
 )
 
 class ImageProcessor(private val context: Context) {
 
-    suspend fun processImage(uri: Uri): ImagePipelineResult = withContext(Dispatchers.IO) {
-        val hash = computeSha256(uri)
-        
+    suspend fun processAvatar(uri: Uri): Result<ProcessedAvatar> = withContext(Dispatchers.Default) {
+        try {
+            val originalBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: return@withContext Result.failure(Exception("Failed to read image"))
+            val hash = generateHash(originalBytes)
+
+            // Decode only for derived avatar sizes. The original bytes are preserved untouched.
+            val bitmap = decodeSampledBitmapFromUri(uri, 2048, 2048)
+                ?: return@withContext Result.failure(Exception("Failed to decode image"))
+
+            val size1024WebP = compressToWebP(Bitmap.createScaledBitmap(bitmap, 1024, 1024, true), 94)
+            val size512WebP = compressToWebP(Bitmap.createScaledBitmap(bitmap, 512, 512, true), 92)
+            val size256WebP = compressToWebP(Bitmap.createScaledBitmap(bitmap, 256, 256, true), 90)
+            val thumbWebP = compressToWebP(Bitmap.createScaledBitmap(bitmap, 96, 96, true), 88)
+
+            Result.success(
+                ProcessedAvatar(
+                    hash = hash,
+                    originalBytes = originalBytes,
+                    originalExtension = extensionForUri(uri),
+                    size1024Bytes = size1024WebP,
+                    size512Bytes = size512WebP,
+                    size256Bytes = size256WebP,
+                    thumbBytes = thumbWebP
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun decodeSampledBitmapFromUri(uri: Uri, reqWidth: Int, reqHeight: Int): Bitmap? {
         val options = BitmapFactory.Options().apply {
             inJustDecodeBounds = true
         }
         
-        context.contentResolver.openInputStream(uri)?.use { inputStream ->
-            BitmapFactory.decodeStream(inputStream, null, options)
+        context.contentResolver.openInputStream(uri)?.use { stream ->
+            BitmapFactory.decodeStream(stream, null, options)
         }
-        
-        val originalWidth = options.outWidth
-        val originalHeight = options.outHeight
-        
-        if (originalWidth <= 0 || originalHeight <= 0) {
-            throw IllegalArgumentException("Invalid image dimensions")
+
+        options.inSampleSize = calculateInSampleSize(options, reqWidth, reqHeight)
+        options.inJustDecodeBounds = false
+
+        return context.contentResolver.openInputStream(uri)?.use { stream ->
+            BitmapFactory.decodeStream(stream, null, options)
         }
-        
-        val maxOriginalDimension = max(originalWidth, originalHeight)
-        
-        // Define resolutions
-        val targetSizes = listOf(
-            min(maxOriginalDimension, 2048), // Cap original dimension at 2048 for memory safety
-            512,
-            256,
-            96
-        ).filter { it <= maxOriginalDimension || it == 96 }.distinct().sortedDescending()
-        
-        val processedImages = mutableListOf<ProcessedImage>()
-        
-        for (targetSize in targetSizes) {
-            val processedImage = decodeAndCompress(uri, originalWidth, originalHeight, targetSize)
-            if (processedImage != null) {
-                processedImages.add(processedImage)
-            }
-        }
-        
-        ImagePipelineResult(
-            avatarHash = hash,
-            images = processedImages
-        )
     }
 
-    private fun computeSha256(uri: Uri): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        context.contentResolver.openInputStream(uri)?.use { inputStream ->
-            val buffer = ByteArray(8192)
-            var bytesRead: Int
-            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                digest.update(buffer, 0, bytesRead)
+    private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
+        val (height: Int, width: Int) = options.outHeight to options.outWidth
+        var inSampleSize = 1
+
+        if (height > reqHeight || width > reqWidth) {
+            val halfHeight: Int = height / 2
+            val halfWidth: Int = width / 2
+
+            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+                inSampleSize *= 2
             }
-        } ?: throw IllegalArgumentException("Could not open input stream for URI")
-        
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        }
+        return inSampleSize
     }
 
-    private fun decodeAndCompress(
-        uri: Uri,
-        originalWidth: Int,
-        originalHeight: Int,
-        targetSize: Int
-    ): ProcessedImage? {
-        val maxDim = max(originalWidth, originalHeight)
-        val scale = if (maxDim > targetSize) maxDim / targetSize else 1
-        
-        val options = BitmapFactory.Options().apply {
-            // inSampleSize needs to be a power of 2
-            inSampleSize = if (scale > 1) Integer.highestOneBit(scale) else 1
-            inJustDecodeBounds = false
-        }
-        
-        val bitmap = context.contentResolver.openInputStream(uri)?.use { inputStream ->
-            BitmapFactory.decodeStream(inputStream, null, options)
-        } ?: return null
-        
-        val currentMaxDim = max(bitmap.width, bitmap.height)
-        val finalBitmap = if (currentMaxDim > targetSize) {
-            val ratio = targetSize.toFloat() / currentMaxDim
-            val newWidth = (bitmap.width * ratio).roundToInt()
-            val newHeight = (bitmap.height * ratio).roundToInt()
-            val scaledBitmap = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
-            if (scaledBitmap != bitmap) {
-                bitmap.recycle()
-            }
-            scaledBitmap
-        } else {
-            bitmap
-        }
-        
-        val outputStream = ByteArrayOutputStream()
-        val compressFormat = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+    private fun compressToWebP(bitmap: Bitmap, quality: Int = 92): ByteArray {
+        val stream = ByteArrayOutputStream()
+        val format = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
             Bitmap.CompressFormat.WEBP_LOSSY
         } else {
-            @Suppress("DEPRECATION")
             Bitmap.CompressFormat.WEBP
         }
-        
-        finalBitmap.compress(compressFormat, 80, outputStream)
-        finalBitmap.recycle()
-        
-        return ProcessedImage(
-            resolution = targetSize,
-            data = outputStream.toByteArray()
-        )
+        bitmap.compress(format, quality, stream)
+        return stream.toByteArray()
+    }
+
+    private fun extensionForUri(uri: Uri): String {
+        val mimeType = context.contentResolver.getType(uri).orEmpty()
+        return when {
+            mimeType.equals("image/png", ignoreCase = true) -> ".png"
+            mimeType.equals("image/webp", ignoreCase = true) -> ".webp"
+            mimeType.equals("image/heic", ignoreCase = true) -> ".heic"
+            mimeType.equals("image/heif", ignoreCase = true) -> ".heif"
+            else -> ".jpg"
+        }
+    }
+
+    private fun generateHash(data: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hashBytes = digest.digest(data)
+        return hashBytes.joinToString("") { "%02x".format(it) }
     }
 }

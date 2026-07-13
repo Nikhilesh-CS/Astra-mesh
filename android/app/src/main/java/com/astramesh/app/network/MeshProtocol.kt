@@ -9,8 +9,19 @@ object MeshProtocol {
     const val TYPE_RELAY = "relay"
     const val TYPE_ACK = "ack"
     const val TYPE_READ = "read"
+    const val TYPE_REACTION = "reaction"
+    const val TYPE_PRESENCE = "presence"
     const val TYPE_PING = "ping"
     const val TYPE_PONG = "pong"
+    
+    // Profile Sync Protocol Types
+    const val TYPE_PROFILE_UPDATE = "profile_update"
+    const val TYPE_REQUEST_PROFILE_PHOTO = "req_profile_photo"
+    const val TYPE_PROFILE_PHOTO_CHUNK = "profile_photo_chunk"
+
+    // ASTRA Music metadata and listen-together sync. No audio bytes are transferred.
+    const val TYPE_MUSIC_NOTE = "music_note"
+    const val TYPE_MUSIC_SYNC = "music_sync"
     
     // Media Transfer Protocol Types
     const val TYPE_MEDIA_OFFER = "media_offer"
@@ -20,9 +31,16 @@ object MeshProtocol {
     const val TYPE_MEDIA_RESUME = "media_resume"
     const val TYPE_MEDIA_COMPLETE = "media_complete"
     const val TYPE_MEDIA_ERROR = "media_error"
+
+    // Call signaling. Media itself uses WebRTC; these messages are encrypted signaling only.
+    const val TYPE_CALL_OFFER = "call_offer"
+    const val TYPE_CALL_ANSWER = "call_answer"
+    const val TYPE_ICE_CANDIDATE = "ice_candidate"
     
     const val DEFAULT_TTL = 5
-    const val MAX_FRAME_BYTES = 64 * 1024
+    // Single encrypted frames are for chat/control metadata, not large media.
+    // Large files still use the chunked media-transfer pipeline.
+    const val MAX_FRAME_BYTES = 2 * 1024 * 1024
 
     private val hexRegex = Regex("^[0-9a-f]+$")
 
@@ -58,20 +76,24 @@ object MeshProtocol {
         return json.toString()
     }
 
-    fun encodeAck(messageId: String, fromKey: String, senderOnion: String? = null): String {
+    fun encodeAck(messageId: String, fromKey: String, toKey: String? = null, senderOnion: String? = null, ttl: Int = DEFAULT_TTL): String {
         val json = JSONObject()
             .put("type", TYPE_ACK)
             .put("msgId", messageId)
             .put("from", fromKey)
+            .put("ttl", ttl)
+        if (!toKey.isNullOrBlank()) json.put("to", toKey)
         if (!senderOnion.isNullOrBlank()) json.put("senderOnion", senderOnion)
         return json.toString()
     }
 
-    fun encodeRead(messageId: String, fromKey: String, senderOnion: String? = null): String {
+    fun encodeRead(messageId: String, fromKey: String, toKey: String? = null, senderOnion: String? = null, ttl: Int = DEFAULT_TTL): String {
         val json = JSONObject()
             .put("type", TYPE_READ)
             .put("msgId", messageId)
             .put("from", fromKey)
+            .put("ttl", ttl)
+        if (!toKey.isNullOrBlank()) json.put("to", toKey)
         if (!senderOnion.isNullOrBlank()) json.put("senderOnion", senderOnion)
         return json.toString()
     }
@@ -96,7 +118,8 @@ object MeshProtocol {
         ttl: Int = DEFAULT_TTL,
         messageId: String? = null,
         senderOnion: String? = null,
-        type: String = TYPE_RELAY
+        type: String = TYPE_RELAY,
+        innerType: String? = null
     ): String {
         val json = JSONObject()
             .put("type", type)
@@ -108,6 +131,7 @@ object MeshProtocol {
             .put("signature", payload.signatureHex)
         if (!messageId.isNullOrBlank()) json.put("msgId", messageId)
         if (!senderOnion.isNullOrBlank()) json.put("senderOnion", senderOnion)
+        if (!innerType.isNullOrBlank()) json.put("innerType", innerType)
         return json.toString()
     }
 

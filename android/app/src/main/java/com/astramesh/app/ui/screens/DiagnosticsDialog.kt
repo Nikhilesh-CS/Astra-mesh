@@ -1,5 +1,7 @@
 package com.astramesh.app.ui.screens
 
+
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -12,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -26,17 +29,16 @@ fun DiagnosticsDialog(
     nearbyManager: NearbyConnectionManager,
     onDismiss: () -> Unit
 ) {
-    val torState by torManager.torState.collectAsState()
-    val torStatus by torManager.torStatus.collectAsState()
-    val onionAddress by torManager.onionAddress.collectAsState()
-    val isTorReady by torManager.isTorReady.collectAsState()
-    
-    val connectedEndpoints by nearbyManager.connectedEndpoints.collectAsState()
-    val connectionStatus by nearbyManager.connectionStatus.collectAsState()
+    val torState by torManager.torState.collectAsStateWithLifecycle()
+    val torStatus by torManager.torStatus.collectAsStateWithLifecycle()
+    val onionAddress by torManager.onionAddress.collectAsStateWithLifecycle()
+
+    val connectedEndpoints by nearbyManager.connectedEndpoints.collectAsStateWithLifecycle()
+    val connectionStatus by nearbyManager.connectionStatus.collectAsStateWithLifecycle()
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = DeepBlack,
+        containerColor = Color(0xE6111827),
         title = {
             Text("Network Diagnostics", color = SoftWhite, fontWeight = FontWeight.Bold)
         },
@@ -45,7 +47,7 @@ fun DiagnosticsDialog(
                 // Tor Section
                 Text("Tor Network", color = AccentViolet, fontWeight = FontWeight.SemiBold, fontSize = AstraTheme.typography.bodyMedium.fontSize)
                 Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
-                
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
@@ -55,6 +57,7 @@ fun DiagnosticsDialog(
                                 when (torState) {
                                     is TorState.Connected -> NeonGreen
                                     is TorState.Starting -> AccentCyan
+                                    is TorState.Reconnecting -> AccentViolet
                                     is TorState.Failed -> AccentPink
                                     else -> DimGray
                                 }
@@ -63,10 +66,10 @@ fun DiagnosticsDialog(
                     Spacer(modifier = Modifier.width(AstraTheme.spacing.small))
                     Text("Status: $torStatus", color = MutedGray, fontSize = AstraTheme.typography.bodySmall.fontSize)
                 }
-                
+
                 Spacer(modifier = Modifier.height(AstraTheme.spacing.tiny))
                 Text("Address: ${if (onionAddress.isNotBlank()) onionAddress else "Not available"}", color = MutedGray, fontSize = AstraTheme.typography.bodySmall.fontSize)
-                
+
                 if (torState is TorState.Starting) {
                     val progress = (torState as TorState.Starting).progress
                     Spacer(modifier = Modifier.height(AstraTheme.spacing.small))
@@ -102,6 +105,9 @@ fun DiagnosticsDialog(
                 Text("Close", color = AccentViolet)
             }
         },
-        shape = RoundedCornerShape(AstraTheme.spacing.standard)
+        shape = RoundedCornerShape(30.dp),
+        titleContentColor = Color(0xFFF6F7FF),
+        textContentColor = Color(0xFFB9C3D4),
+        tonalElevation = 0.dp
     )
 }

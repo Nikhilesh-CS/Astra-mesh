@@ -1,9 +1,34 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("kotlin-kapt")
     id("jacoco")
 }
+
+val keystoreProperties = Properties().apply {
+    val keystorePropertiesFile = rootProject.file("keystore.properties")
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+
+fun signingProperty(name: String, envName: String): String? {
+    return (keystoreProperties.getProperty(name) ?: System.getenv(envName))
+        ?.takeIf { it.isNotBlank() }
+}
+
+val releaseStoreFilePath = signingProperty("storeFile", "ASTRAMESH_RELEASE_STORE_FILE")
+val releaseStorePassword = signingProperty("storePassword", "ASTRAMESH_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = signingProperty("keyAlias", "ASTRAMESH_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = signingProperty("keyPassword", "ASTRAMESH_RELEASE_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseStoreFilePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword
+).all { !it.isNullOrBlank() }
 
 android {
     namespace = "com.astramesh.app"
@@ -13,17 +38,19 @@ android {
         applicationId = "com.astramesh.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "1.0.7"
+        versionCode = 22
+        versionName = "1.0.18"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file("astramesh.jks")
-            storePassword = "astramesh123"
-            keyAlias = "astramesh"
-            keyPassword = "astramesh123"
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFilePath!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
         }
     }
 
@@ -36,7 +63,11 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
     compileOptions {
@@ -84,10 +115,12 @@ dependencies {
     implementation("com.goterl:lazysodium-android:5.1.0@aar")
     implementation("net.java.dev.jna:jna:5.14.0@aar")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    implementation("com.google.errorprone:error_prone_annotations:2.23.0")
 
     // Google Nearby Connections (P2P offline)
     implementation("com.google.android.gms:play-services-nearby:19.1.0")
+
+    // WebRTC runtime for calls/DataChannel. Kept behind RealtimeEngine so it can be replaced.
+    implementation("io.github.webrtc-sdk:android:144.7559.09")
 
     // Room Database
     implementation("androidx.room:room-runtime:2.6.1")
@@ -96,6 +129,7 @@ dependencies {
     
     // JSON
     implementation("com.google.code.gson:gson:2.10.1")
+    implementation("com.google.zxing:core:3.5.3")
 
     // Accompanist (permissions)
     implementation("com.google.accompanist:accompanist-permissions:0.34.0")
@@ -133,4 +167,8 @@ dependencies {
     
     // Room Testing
     androidTestImplementation("androidx.room:room-testing:2.6.1")
+}
+
+kapt {
+    correctErrorTypes = true
 }

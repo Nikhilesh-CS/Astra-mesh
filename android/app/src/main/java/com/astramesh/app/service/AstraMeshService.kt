@@ -25,6 +25,7 @@ import com.astramesh.app.identity.IdentityManager
 import com.astramesh.app.network.MessageRouter
 import com.astramesh.app.network.NearbyConnectionManager
 import com.astramesh.app.network.TorManager
+import com.astramesh.app.network.TorState
 import com.astramesh.app.updater.GitHubUpdater
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
@@ -68,11 +69,26 @@ class AstraMeshService : Service() {
         private set
     lateinit var mediaTransferManager: com.astramesh.app.transfer.MediaTransferManager
         private set
+    lateinit var realtimeEngineManager: com.astramesh.app.realtime.RealtimeEngineManager
+        private set
+    lateinit var astraFastLane: com.astramesh.app.realtime.AstraFastLane
+        private set
+    lateinit var callManager: com.astramesh.app.call.CallManager
+        private set
+    lateinit var presenceManager: com.astramesh.app.presence.PresenceManager
+        private set
+    lateinit var profileSyncManager: com.astramesh.app.identity.profile.ProfileSyncManager
+        private set
+    lateinit var musicNoteManager: com.astramesh.app.music.MusicNoteManager
+        private set
+    lateinit var listenTogetherManager: com.astramesh.app.music.ListenTogetherManager
+        private set
     lateinit var settingsManager: com.astramesh.app.data.SettingsManager
         private set
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val binder = LocalBinder()
+    private val isConfigured = kotlinx.coroutines.flow.MutableStateFlow(false)
 
     inner class LocalBinder : Binder() {
         fun getService(): AstraMeshService = this@AstraMeshService
@@ -103,14 +119,31 @@ class AstraMeshService : Service() {
                 AppDatabase.MIGRATION_4_5,
                 AppDatabase.MIGRATION_5_6,
                 AppDatabase.MIGRATION_6_7,
-                AppDatabase.MIGRATION_7_8
+                AppDatabase.MIGRATION_7_8,
+                AppDatabase.MIGRATION_8_9,
+                AppDatabase.MIGRATION_9_10,
+                AppDatabase.MIGRATION_10_11,
+                AppDatabase.MIGRATION_11_12
             )
             .build()
 
         nearbyManager = NearbyConnectionManager(this)
         torManager = TorManager(this)
         messageRouter = MessageRouter(serviceScope, db, nearbyManager, torManager)
-        mediaTransferManager = com.astramesh.app.transfer.MediaTransferManager(this, db, messageRouter)
+        realtimeEngineManager = com.astramesh.app.realtime.RealtimeEngineManager(this, messageRouter)
+        astraFastLane = com.astramesh.app.realtime.AstraFastLane(realtimeEngineManager)
+        mediaTransferManager = com.astramesh.app.transfer.MediaTransferManager(this, db, messageRouter, astraFastLane)
+        callManager = com.astramesh.app.call.CallManager(this, db, messageRouter)
+        presenceManager = com.astramesh.app.presence.PresenceManager(serviceScope, messageRouter)
+        
+        val profileCache = com.astramesh.app.identity.profile.ProfileCacheManagerImpl(this)
+        val imageProcessor = com.astramesh.app.media.ImageProcessor(this)
+        val profileRepository = com.astramesh.app.identity.profile.ProfileRepositoryImpl(db.profileDao(), identityManager, profileCache, imageProcessor)
+        profileSyncManager = com.astramesh.app.identity.profile.ProfileSyncManager(this, profileRepository, messageRouter)
+        val musicRepository = com.astramesh.app.music.MusicNoteRepositoryImpl(db.musicNoteDao())
+        musicNoteManager = com.astramesh.app.music.MusicNoteManager(this, serviceScope, db, identityManager, musicRepository, messageRouter)
+        listenTogetherManager = com.astramesh.app.music.ListenTogetherManager(serviceScope, messageRouter)
+        
         settingsManager = com.astramesh.app.data.SettingsManager(this)
 
         wireNetworking()
@@ -120,11 +153,7 @@ class AstraMeshService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = createNotification("Astra Mesh is running", "Secure mesh network active")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
+        startForeground(NOTIFICATION_ID, notification)
 
         // Start networking if identity exists
         configureAndStart()
@@ -143,9 +172,7 @@ class AstraMeshService : Service() {
         messageRouter.mySigningKeyHex = CryptoManager.toHex(identity.signingPublicKey)
         messageRouter.myOnionAddress = identityManager.loadOnionAddress() ?: ""
 
-        nearbyManager.startAdvertising()
-        nearbyManager.startDiscovery()
-        torManager.start()
+        isConfigured.value = true
 
         // Start retry loop for any pending messages from previous session
         messageRouter.ensureRetryLoopRunning()
@@ -195,7 +222,7 @@ class AstraMeshService : Service() {
 
         nearbyManager.onDisconnected = { endpointId ->
             serviceScope.launch {
-                db.contactDao().updateConnectionStatus(endpointId, false)
+                db.contactDao().clearEndpoint(endpointId)
             }
             Log.d(TAG, "[NEARBY] Disconnected from $endpointId")
         }
@@ -214,6 +241,97 @@ class AstraMeshService : Service() {
                     updateNotification("Connected", "Tor: ${onion.take(16)}...")
                 }
             }
+        }
+
+        serviceScope.launch {
+            torManager.torState.collectLatest { state ->
+                when (state) {
+                    is TorState.Connected -> {
+                        updateNotification("Connected", "Tor: ${state.onionAddress.take(16)}...")
+                        messageRouter.retryPendingNow()
+                    }
+                    is TorState.Reconnecting -> {
+                        updateNotification("Reconnecting via Tor...", "Messages are queued safely")
+                    }
+                    is TorState.Failed -> {
+                        updateNotification("Tor offline", "Messages will retry when Tor reconnects")
+                    }
+                    is TorState.Starting -> {
+                        updateNotification("Starting Tor", state.message)
+                    }
+                    TorState.Idle,
+                    TorState.Stopped -> {
+                        updateNotification("Astra Mesh is running", "Secure mesh network standby")
+                    }
+                }
+            }
+        }
+
+        serviceScope.launch {
+            kotlinx.coroutines.flow.combine(isConfigured, settingsManager.torEnabledFlow) { configured, enabled ->
+                Pair(configured, enabled)
+            }.collectLatest { (configured, enabled) ->
+                if (configured) {
+                    if (enabled) torManager.start() else torManager.stop()
+                }
+            }
+        }
+
+        serviceScope.launch {
+            kotlinx.coroutines.flow.combine(
+                isConfigured,
+                settingsManager.hideOnlineStatusFlow,
+                settingsManager.bluetoothScanningFlow,
+                settingsManager.wifiDirectScanningFlow,
+                settingsManager.performanceModeFlow
+            ) { configured, hidden, bluetoothScanning, wifiDirectScanning, performanceMode ->
+                NearbyPowerPolicy(configured, hidden, bluetoothScanning, wifiDirectScanning, performanceMode)
+            }.collectLatest { policy ->
+                if (policy.configured) {
+                    applyNearbyPowerPolicy(policy)
+                }
+            }
+        }
+
+        serviceScope.launch {
+            kotlinx.coroutines.flow.combine(
+                settingsManager.backgroundSyncFrequencyFlow,
+                settingsManager.performanceModeFlow
+            ) { frequency, performanceMode ->
+                backgroundRetryIntervalMs(frequency, performanceMode)
+            }.collectLatest { interval ->
+                messageRouter.setBackgroundRetryInterval(interval)
+            }
+        }
+    }
+
+    private fun applyNearbyPowerPolicy(policy: NearbyPowerPolicy) {
+        if (policy.hideOnlineStatus || (!policy.bluetoothScanning && !policy.wifiDirectScanning)) {
+            nearbyManager.stopAll()
+            return
+        }
+
+        nearbyManager.startAdvertising()
+        if (policy.performanceMode == "battery_saver") {
+            nearbyManager.stopDiscovery()
+        } else {
+            nearbyManager.startDiscovery()
+        }
+    }
+
+    private data class NearbyPowerPolicy(
+        val configured: Boolean,
+        val hideOnlineStatus: Boolean,
+        val bluetoothScanning: Boolean,
+        val wifiDirectScanning: Boolean,
+        val performanceMode: String
+    )
+
+    private fun backgroundRetryIntervalMs(frequency: String, performanceMode: String): Long {
+        return when (frequency) {
+            "low" -> 60_000L
+            "fast" -> 10_000L
+            else -> if (performanceMode == "battery_saver") 60_000L else 30_000L
         }
     }
 

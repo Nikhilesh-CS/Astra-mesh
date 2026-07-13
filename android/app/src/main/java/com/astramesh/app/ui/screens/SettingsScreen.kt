@@ -7,8 +7,12 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,9 +23,11 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -47,7 +53,9 @@ import javax.net.ssl.HttpsURLConnection
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
 import com.astramesh.app.identity.backup.IdentityBackupManager
 import com.astramesh.app.identity.backup.IdentityRestoreManager
 import com.astramesh.app.data.SettingsManager
@@ -59,20 +67,26 @@ fun SettingsScreen(
     navController: NavController,
     onionAddress: String,
     db: AppDatabase,
-    settingsManager: SettingsManager
+    settingsManager: SettingsManager,
+    onNavigateBack: () -> Unit = { navController.navigateUp() }
 ) {
     val context = LocalContext.current
     var identity by remember { mutableStateOf(identityManager.loadIdentity()) }
     val scope = rememberCoroutineScope()
 
-    val torModeEnabled by settingsManager.torEnabledFlow.collectAsState(initial = true)
-    val hideOnlineStatus by settingsManager.hideOnlineStatusFlow.collectAsState(initial = false)
-    val reduceMotion by settingsManager.reduceMotionFlow.collectAsState(initial = false)
-    val showTransportIcons by settingsManager.showTransportIconsFlow.collectAsState(initial = true)
-    val darkMode by settingsManager.darkModeFlow.collectAsState(initial = true)
+    val torModeEnabled by settingsManager.torEnabledFlow.collectAsStateWithLifecycle(initialValue = true)
+    val hideOnlineStatus by settingsManager.hideOnlineStatusFlow.collectAsStateWithLifecycle(initialValue = false)
+    val reduceMotion by settingsManager.reduceMotionFlow.collectAsStateWithLifecycle(initialValue = false)
+    val showTransportIcons by settingsManager.showTransportIconsFlow.collectAsStateWithLifecycle(initialValue = true)
+    val darkMode by settingsManager.darkModeFlow.collectAsStateWithLifecycle(initialValue = true)
+    val performanceMode by settingsManager.performanceModeFlow.collectAsStateWithLifecycle(initialValue = "balanced")
+    val bluetoothScanning by settingsManager.bluetoothScanningFlow.collectAsStateWithLifecycle(initialValue = true)
+    val wifiDirectScanning by settingsManager.wifiDirectScanningFlow.collectAsStateWithLifecycle(initialValue = true)
+    val backgroundSyncFrequency by settingsManager.backgroundSyncFrequencyFlow.collectAsStateWithLifecycle(initialValue = "normal")
+    val localProfile by db.profileDao().getProfile("LOCAL_USER").collectAsStateWithLifecycle(initialValue = null)
+    var isBatteryOptimizationIgnored by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
     
     // Dialog States
-    var showEditProfileDialog by remember { mutableStateOf(false) }
     var showClearChatsDialog by remember { mutableStateOf(false) }
     var showOnionDialog by remember { mutableStateOf(false) }
     var showPrivacyDialog by remember { mutableStateOf(false) }
@@ -96,7 +110,10 @@ fun SettingsScreen(
             backupError = null
             scope.launch {
                 try {
-                    val manager = IdentityBackupManager(context)
+                    val profileCacheManager = com.astramesh.app.identity.profile.ProfileCacheManagerImpl(context)
+                    val imageProcessor = com.astramesh.app.media.ImageProcessor(context)
+                    val profileRepository = com.astramesh.app.identity.profile.ProfileRepositoryImpl(db.profileDao(), identityManager, profileCacheManager, imageProcessor)
+                    val manager = IdentityBackupManager(context, profileRepository, profileCacheManager)
                     val outputStream = context.contentResolver.openOutputStream(uri)
                     if (outputStream != null) {
                         val result = manager.exportBackup(outputStream, backupPassword.toCharArray())
@@ -171,6 +188,7 @@ fun SettingsScreen(
 
     LaunchedEffect(Unit) {
         calculateSizes()
+        isBatteryOptimizationIgnored = isIgnoringBatteryOptimizations(context)
     }
 
     fun showToast(msg: String) {
@@ -204,6 +222,11 @@ fun SettingsScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Settings", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground) },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onBackground)
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground
@@ -223,14 +246,18 @@ fun SettingsScreen(
                         .padding(top = AstraTheme.spacing.extraLarge, bottom = AstraTheme.spacing.standard),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    AstraAvatar(name = identity?.name ?: "Unknown", size = 120.dp)
+                    AstraAvatar(
+                        name = identity?.name ?: localProfile?.name ?: "Unknown",
+                        model = localProfile?.avatarLocalPath,
+                        size = 120.dp
+                    )
                     Spacer(modifier = Modifier.height(AstraTheme.spacing.standard))
                     
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(AstraTheme.spacing.large))
                             .background(AstraTheme.colors.primaryContainer) // Darker green for background
-                            .clickable { showEditProfileDialog = true }
+                            .clickable { navController.navigate("profile") }
                             .padding(horizontal = AstraTheme.spacing.extraLarge, vertical = AstraTheme.spacing.small)
                     ) {
                         Text(
@@ -246,10 +273,10 @@ fun SettingsScreen(
             // Group: Profile Details (No headers, just list items like WhatsApp)
             item {
                 SettingsItem(
-                    icon = Icons.Rounded.PersonOutline,
-                    title = "Name",
-                    subtitle = identity?.name ?: "Unknown",
-                    onClick = { showEditProfileDialog = true }
+                    icon = Icons.Rounded.Person,
+                    title = "Edit Profile",
+                    subtitle = "Change your display name, bio, and avatar",
+                    onClick = { navController.navigate("profile") }
                 )
             }
             item {
@@ -258,7 +285,7 @@ fun SettingsScreen(
                     title = "About",
                     subtitle = "Privacy-first communication",
                     subtitleColor = AccentCyan,
-                    onClick = { showEditProfileDialog = true }
+                    onClick = { showPrivacyDialog = true }
                 )
             }
             item {
@@ -275,9 +302,17 @@ fun SettingsScreen(
                 )
             }
 
-            item { Divider(color = CardSurface, modifier = Modifier.padding(vertical = AstraTheme.spacing.small)) }
+            item { HorizontalDivider(color = CardSurface, modifier = Modifier.padding(vertical = AstraTheme.spacing.small)) }
 
             // Group: Network & Privacy
+            item {
+                SettingsItem(
+                    icon = Icons.Rounded.Dashboard,
+                    title = "Mesh Dashboard",
+                    subtitle = "Network health and topology",
+                    onClick = { navController.navigate("mesh_dashboard") }
+                )
+            }
             item {
                 SettingsSwitchItem(
                     icon = Icons.Rounded.WifiTethering,
@@ -336,6 +371,36 @@ fun SettingsScreen(
                     }
                 )
             }
+
+            item { HorizontalDivider(color = CardSurface, modifier = Modifier.padding(vertical = AstraTheme.spacing.small)) }
+
+            item {
+                BatteryPerformanceSection(
+                    torEnabled = torModeEnabled,
+                    bluetoothScanning = bluetoothScanning,
+                    wifiDirectScanning = wifiDirectScanning,
+                    performanceMode = performanceMode,
+                    backgroundSyncFrequency = backgroundSyncFrequency,
+                    batteryOptimizationIgnored = isBatteryOptimizationIgnored,
+                    serviceRunning = com.astramesh.app.service.AstraMeshService.getInstance() != null,
+                    onOpenBatterySettings = {
+                        openBatteryOptimizationSettings(context)
+                        isBatteryOptimizationIgnored = isIgnoringBatteryOptimizations(context)
+                    },
+                    onPerformanceModeSelected = { mode ->
+                        scope.launch { settingsManager.setPerformanceMode(mode) }
+                    },
+                    onBluetoothScanningChanged = { enabled ->
+                        scope.launch { settingsManager.setBluetoothScanning(enabled) }
+                    },
+                    onWifiDirectScanningChanged = { enabled ->
+                        scope.launch { settingsManager.setWifiDirectScanning(enabled) }
+                    },
+                    onBackgroundSyncChanged = { frequency ->
+                        scope.launch { settingsManager.setBackgroundSyncFrequency(frequency) }
+                    }
+                )
+            }
             item {
                 SettingsSwitchItem(
                     icon = Icons.Rounded.Animation,
@@ -359,7 +424,7 @@ fun SettingsScreen(
             item {
                 SettingsSwitchItem(
                     icon = Icons.Rounded.Brightness4,
-                    title = "Dark Mode",
+                    title = "AMOLED Pure Black",
                     checked = darkMode,
                     onCheckedChange = { 
                         scope.launch { settingsManager.setDarkMode(it) }
@@ -367,7 +432,7 @@ fun SettingsScreen(
                 )
             }
 
-            item { Divider(color = CardSurface, modifier = Modifier.padding(vertical = AstraTheme.spacing.small)) }
+            item { HorizontalDivider(color = CardSurface, modifier = Modifier.padding(vertical = AstraTheme.spacing.small)) }
 
             // Group: Identity Management
             item {
@@ -387,7 +452,7 @@ fun SettingsScreen(
                 )
             }
 
-            item { Divider(color = CardSurface, modifier = Modifier.padding(vertical = AstraTheme.spacing.small)) }
+            item { HorizontalDivider(color = CardSurface, modifier = Modifier.padding(vertical = AstraTheme.spacing.small)) }
 
             // Group: Data
             item {
@@ -432,7 +497,7 @@ fun SettingsScreen(
                 )
             }
 
-            item { Divider(color = CardSurface, modifier = Modifier.padding(vertical = AstraTheme.spacing.small)) }
+            item { HorizontalDivider(color = CardSurface, modifier = Modifier.padding(vertical = AstraTheme.spacing.small)) }
 
             // Group: App Details
             item {
@@ -469,47 +534,6 @@ fun SettingsScreen(
     }
 
     // --- Dialogs ---
-
-    if (showEditProfileDialog) {
-        var nameInput by remember { mutableStateOf(identity?.name ?: "") }
-        AlertDialog(
-            onDismissRequest = { showEditProfileDialog = false },
-            containerColor = CardSurface,
-            title = { Text("Edit Profile", color = SoftWhite) },
-            text = {
-                OutlinedTextField(
-                    value = nameInput,
-                    onValueChange = { nameInput = it },
-                    label = { Text("Name", color = MutedGray) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AccentCyan,
-                        unfocusedBorderColor = DimGray,
-                        focusedTextColor = SoftWhite,
-                        unfocusedTextColor = SoftWhite
-                    ),
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (nameInput.isNotBlank()) {
-                        scope.launch(Dispatchers.IO) {
-                            identityManager.updateName(nameInput)
-                            identity = identityManager.loadIdentity()
-                            withContext(Dispatchers.Main) { showEditProfileDialog = false }
-                        }
-                    }
-                }) {
-                    Text("Save", color = AccentCyan)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEditProfileDialog = false }) {
-                    Text("Cancel", color = MutedGray)
-                }
-            }
-        )
-    }
 
     if (showClearChatsDialog) {
         AlertDialog(
@@ -598,6 +622,7 @@ fun SettingsScreen(
                         onValueChange = { backupPassword = it },
                         label = { Text("Backup Password", color = MutedGray) },
                         visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         singleLine = true,
                         enabled = !isBackupWorking,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -647,6 +672,7 @@ fun SettingsScreen(
                         onValueChange = { backupPassword = it },
                         label = { Text("Backup Password", color = MutedGray) },
                         visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         singleLine = true,
                         enabled = !isBackupWorking,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -684,6 +710,247 @@ fun SettingsScreen(
 }
 
 @Composable
+private fun BatteryPerformanceSection(
+    torEnabled: Boolean,
+    bluetoothScanning: Boolean,
+    wifiDirectScanning: Boolean,
+    performanceMode: String,
+    backgroundSyncFrequency: String,
+    batteryOptimizationIgnored: Boolean,
+    serviceRunning: Boolean,
+    onOpenBatterySettings: () -> Unit,
+    onPerformanceModeSelected: (String) -> Unit,
+    onBluetoothScanningChanged: (Boolean) -> Unit,
+    onWifiDirectScanningChanged: (Boolean) -> Unit,
+    onBackgroundSyncChanged: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AstraTheme.spacing.large, vertical = 6.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        Color(0xFF101827).copy(alpha = 0.92f),
+                        Color(0xFF051914).copy(alpha = 0.86f),
+                        Color(0xFF140F25).copy(alpha = 0.90f)
+                    )
+                )
+            )
+            .border(1.dp, Color.White.copy(alpha = 0.11f), RoundedCornerShape(28.dp))
+            .padding(AstraTheme.spacing.large)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF00E5A8).copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Rounded.Bolt, contentDescription = null, tint = Color(0xFF00E5A8), modifier = Modifier.size(24.dp))
+            }
+            Spacer(Modifier.width(AstraTheme.spacing.standard))
+            Column(Modifier.weight(1f)) {
+                Text("Battery & Performance", color = SoftWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text("Control background networking and power usage", color = MutedGray, fontSize = AstraTheme.typography.bodyMedium.fontSize)
+            }
+        }
+
+        Spacer(Modifier.height(AstraTheme.spacing.large))
+
+        val impact = estimatedBatteryImpact(torEnabled, bluetoothScanning, wifiDirectScanning, performanceMode)
+        BatteryMetricRow("Estimated impact", impact, impactColor(impact))
+        BatteryMetricRow("Background service", if (serviceRunning) "Running" else "Not running", if (serviceRunning) NeonGreen else AccentPink)
+        BatteryMetricRow(
+            "Android optimization",
+            if (batteryOptimizationIgnored) "Unrestricted" else "Optimized",
+            if (batteryOptimizationIgnored) NeonGreen else Color(0xFFFFC857)
+        )
+
+        Spacer(Modifier.height(AstraTheme.spacing.standard))
+        Text("Active components", color = SoftWhite, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(AstraTheme.spacing.small))
+        BatteryComponentRow("Tor auto-start", torEnabled, if (torEnabled) "High" else "Off")
+        BatteryComponentRow("Bluetooth discovery", bluetoothScanning, if (bluetoothScanning) componentImpact(performanceMode) else "Off")
+        BatteryComponentRow("Wi-Fi Direct discovery", wifiDirectScanning, if (wifiDirectScanning) componentImpact(performanceMode) else "Off")
+        BatteryComponentRow("Mesh discovery", bluetoothScanning || wifiDirectScanning, if (bluetoothScanning || wifiDirectScanning) componentImpact(performanceMode) else "Off")
+
+        Spacer(Modifier.height(AstraTheme.spacing.large))
+        Text("Performance mode", color = SoftWhite, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(AstraTheme.spacing.small))
+        PerformanceModeRow("battery_saver", "Battery Saver", "Reduce discovery. Best for long battery life.", performanceMode, onPerformanceModeSelected)
+        PerformanceModeRow("balanced", "Balanced", "Recommended. Keeps chat reliable without aggressive scanning.", performanceMode, onPerformanceModeSelected)
+        PerformanceModeRow("performance", "Performance", "Fast discovery and routing. Higher battery usage.", performanceMode, onPerformanceModeSelected)
+
+        Spacer(Modifier.height(AstraTheme.spacing.large))
+        Text("Background services", color = SoftWhite, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(AstraTheme.spacing.small))
+        CompactSwitchRow("Bluetooth scanning", bluetoothScanning, onBluetoothScanningChanged)
+        CompactSwitchRow("Wi-Fi Direct scanning", wifiDirectScanning, onWifiDirectScanningChanged)
+
+        Spacer(Modifier.height(AstraTheme.spacing.large))
+        Text("Background sync frequency", color = SoftWhite, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(AstraTheme.spacing.small))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            SyncChip("low", "Low", backgroundSyncFrequency, onBackgroundSyncChanged, Modifier.weight(1f))
+            SyncChip("normal", "Normal", backgroundSyncFrequency, onBackgroundSyncChanged, Modifier.weight(1f))
+            SyncChip("fast", "Fast", backgroundSyncFrequency, onBackgroundSyncChanged, Modifier.weight(1f))
+        }
+
+        Spacer(Modifier.height(AstraTheme.spacing.large))
+        Text(
+            "Disabling Android battery optimization helps Tor and mesh delivery stay alive in the background, especially on Realme, Oppo, Vivo and Xiaomi devices.",
+            color = MutedGray,
+            fontSize = AstraTheme.typography.bodySmall.fontSize
+        )
+        Spacer(Modifier.height(AstraTheme.spacing.small))
+        OutlinedButton(
+            onClick = onOpenBatterySettings,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentCyan)
+        ) {
+            Icon(Icons.Rounded.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Open Android Battery Settings")
+        }
+    }
+}
+
+@Composable
+private fun BatteryMetricRow(label: String, value: String, valueColor: Color) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = MutedGray, fontSize = AstraTheme.typography.bodyMedium.fontSize)
+        Text(value, color = valueColor, fontSize = AstraTheme.typography.bodyMedium.fontSize, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun BatteryComponentRow(label: String, enabled: Boolean, impact: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(9.dp)
+                .clip(CircleShape)
+                .background(if (enabled) NeonGreen else DimGray)
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(label, color = SoftWhite, modifier = Modifier.weight(1f), fontSize = AstraTheme.typography.bodyMedium.fontSize)
+        Text(impact, color = if (enabled) impactColor(impact) else MutedGray, fontSize = AstraTheme.typography.labelMedium.fontSize)
+    }
+}
+
+@Composable
+private fun PerformanceModeRow(
+    mode: String,
+    title: String,
+    subtitle: String,
+    selectedMode: String,
+    onSelected: (String) -> Unit
+) {
+    val selected = selectedMode == mode
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(if (selected) AccentCyan.copy(alpha = 0.13f) else Color.White.copy(alpha = 0.045f))
+            .clickable { onSelected(mode) }
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected, onClick = { onSelected(mode) })
+        Column(Modifier.weight(1f)) {
+            Text(title, color = SoftWhite, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, color = MutedGray, fontSize = AstraTheme.typography.bodySmall.fontSize)
+        }
+    }
+}
+
+@Composable
+private fun CompactSwitchRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = SoftWhite, modifier = Modifier.weight(1f), fontSize = AstraTheme.typography.bodyMedium.fontSize)
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun SyncChip(
+    value: String,
+    label: String,
+    selectedValue: String,
+    onSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    FilterChip(
+        selected = selectedValue == value,
+        onClick = { onSelected(value) },
+        label = { Text(label, maxLines = 1) },
+        modifier = modifier
+    )
+}
+
+private fun estimatedBatteryImpact(
+    torEnabled: Boolean,
+    bluetoothScanning: Boolean,
+    wifiDirectScanning: Boolean,
+    performanceMode: String
+): String {
+    if (!torEnabled && !bluetoothScanning && !wifiDirectScanning) return "Low"
+    if (performanceMode == "performance" && (torEnabled || bluetoothScanning || wifiDirectScanning)) return "High"
+    if (torEnabled && (bluetoothScanning || wifiDirectScanning)) return "Medium"
+    return if (performanceMode == "battery_saver") "Low" else "Medium"
+}
+
+private fun componentImpact(performanceMode: String): String {
+    return when (performanceMode) {
+        "battery_saver" -> "Low"
+        "performance" -> "High"
+        else -> "Medium"
+    }
+}
+
+private fun impactColor(impact: String): Color {
+    return when (impact) {
+        "Low" -> NeonGreen
+        "Medium" -> Color(0xFFFFC857)
+        "High" -> AccentPink
+        else -> MutedGray
+    }
+}
+
+private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+    val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+    return powerManager.isIgnoringBatteryOptimizations(context.packageName)
+}
+
+private fun openBatteryOptimizationSettings(context: Context) {
+    val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+    } else {
+        Intent(Settings.ACTION_SETTINGS)
+    }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    context.startActivity(intent)
+}
+
+@Composable
 fun SettingsItem(
     icon: ImageVector,
     title: String,
@@ -694,14 +961,33 @@ fun SettingsItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = AstraTheme.spacing.large, vertical = 6.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.105f),
+                        Color(0xFF0B1020).copy(alpha = 0.78f)
+                    )
+                )
+            )
+            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(24.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = AstraTheme.spacing.extraLarge, vertical = 14.dp),
+            .padding(horizontal = AstraTheme.spacing.standard, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = title, tint = MutedGray, modifier = Modifier.size(26.dp))
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(AccentCyan.copy(alpha = 0.13f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = title, tint = AccentCyan, modifier = Modifier.size(23.dp))
+        }
         Spacer(modifier = Modifier.width(AstraTheme.spacing.large))
         Column {
-            Text(title, color = SoftWhite, fontSize = AstraTheme.typography.bodyLarge.fontSize, fontWeight = FontWeight.Normal)
+            Text(title, color = SoftWhite, fontSize = AstraTheme.typography.bodyLarge.fontSize, fontWeight = FontWeight.SemiBold)
             if (subtitle != null) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(subtitle, color = subtitleColor, fontSize = AstraTheme.typography.bodyMedium.fontSize)
@@ -721,14 +1007,33 @@ fun SettingsSwitchItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = AstraTheme.spacing.large, vertical = 6.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.105f),
+                        Color(0xFF0B1020).copy(alpha = 0.78f)
+                    )
+                )
+            )
+            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(24.dp))
             .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = AstraTheme.spacing.extraLarge, vertical = 14.dp),
+            .padding(horizontal = AstraTheme.spacing.standard, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = title, tint = MutedGray, modifier = Modifier.size(26.dp))
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(AccentCyan.copy(alpha = 0.13f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = title, tint = AccentCyan, modifier = Modifier.size(23.dp))
+        }
         Spacer(modifier = Modifier.width(AstraTheme.spacing.large))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, color = SoftWhite, fontSize = AstraTheme.typography.bodyLarge.fontSize, fontWeight = FontWeight.Normal)
+            Text(title, color = SoftWhite, fontSize = AstraTheme.typography.bodyLarge.fontSize, fontWeight = FontWeight.SemiBold)
             if (subtitle != null) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(subtitle, color = MutedGray, fontSize = AstraTheme.typography.bodyMedium.fontSize)
@@ -747,3 +1052,5 @@ fun SettingsSwitchItem(
         )
     }
 }
+
+

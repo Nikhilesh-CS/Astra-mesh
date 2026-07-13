@@ -17,3 +17,10 @@ dependencyResolutionManagement {
 
 rootProject.name = "AstraMesh"
 include(":app")
+
+// Keep Gradle intermediates out of the OneDrive-synchronised working tree.
+// Windows/OneDrive can otherwise hold packaging files open during release builds.
+val localBuildRoot = File(System.getenv("LOCALAPPDATA"), "AstraMeshGradleBuild")
+gradle.beforeProject {
+    layout.buildDirectory.set(localBuildRoot.resolve(name))
+}

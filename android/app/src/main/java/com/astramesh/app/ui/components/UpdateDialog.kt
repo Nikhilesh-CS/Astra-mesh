@@ -1,8 +1,10 @@
 package com.astramesh.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -27,7 +29,10 @@ fun UpdateDialog(
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = CardSurface),
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth()
+                .heightIn(max = 560.dp)
         ) {
             Column(
                 modifier = Modifier.padding(24.dp)
@@ -47,11 +52,19 @@ fun UpdateDialog(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                Text(
-                    text = updateInfo.releaseNotes.takeIf { it.isNotBlank() } ?: "Various bug fixes and improvements.",
-                    color = MutedGray,
-                    fontSize = 14.sp
-                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .fillMaxWidth()
+                        .heightIn(max = 280.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = updateInfo.releaseNotes.takeIf { it.isNotBlank() } ?: "Various bug fixes and improvements.",
+                        color = MutedGray,
+                        fontSize = 14.sp
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
@@ -62,7 +75,7 @@ fun UpdateDialog(
                         trackColor = CardSurface
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Downloading...", color = MutedGray, fontSize = 12.sp)
+                    Text("Downloading update securely...", color = MutedGray, fontSize = 12.sp)
                 } else {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -76,7 +89,7 @@ fun UpdateDialog(
                             onClick = onConfirm,
                             colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
                         ) {
-                            Text("Update Now", color = CardSurface, fontWeight = FontWeight.Bold)
+                            Text("Download & Install", color = CardSurface, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

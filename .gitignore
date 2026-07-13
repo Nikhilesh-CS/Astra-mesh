@@ -6,6 +6,10 @@
 
 # Local configuration file (sdk path, etc)
 local.properties
+keystore.properties
+secrets.properties
+.env
+.env.*
 
 # Gradle files
 .gradle/

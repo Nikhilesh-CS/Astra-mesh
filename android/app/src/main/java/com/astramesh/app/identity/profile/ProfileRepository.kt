@@ -1,95 +1,102 @@
 package com.astramesh.app.identity.profile
 
-import com.astramesh.app.crypto.CryptoManager
-import com.astramesh.app.data.AppDatabase
+import android.net.Uri
+import com.astramesh.app.data.ProfileDao
 import com.astramesh.app.data.ProfileEntity
 import com.astramesh.app.identity.IdentityManager
+import com.astramesh.app.media.ImageProcessor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 
-/**
- * Orchestrates ProfileEntity database operations, IdentityManager updates, and caching.
- */
 interface ProfileRepository {
-    /**
-     * Updates the local user's profile and synchronizes the name with IdentityManager.
-     */
-    suspend fun updateLocalProfile(profile: ProfileEntity, avatarData: ByteArray?, thumbnailData: ByteArray? = null)
-    
-    /**
-     * Fetches a contact's profile as a Flow from the database.
-     */
-    fun getContactProfile(contactKey: String): Flow<ProfileEntity?>
-    
-    /**
-     * Saves a profile received from another user over the mesh network.
-     */
-    suspend fun saveReceivedProfile(profile: ProfileEntity, avatarData: ByteArray?, thumbnailData: ByteArray? = null)
-    
-    /**
-     * Helper to get the local profile synchronously.
-     */
-    suspend fun getLocalProfile(): ProfileEntity?
+    fun getLocalProfile(): Flow<ProfileEntity?>
+    fun getContactProfile(ownerKey: String): Flow<ProfileEntity?>
+    suspend fun updateLocalProfile(name: String, bio: String, statusMessage: String, avatarUri: Uri? = null)
+    suspend fun saveContactProfile(profileEntity: ProfileEntity)
 }
 
 class ProfileRepositoryImpl(
-    private val database: AppDatabase,
+    private val profileDao: ProfileDao,
     private val identityManager: IdentityManager,
-    private val cacheManager: ProfileCacheManager
+    private val profileCacheManager: ProfileCacheManager,
+    private val imageProcessor: ImageProcessor
 ) : ProfileRepository {
 
-    // Access the ProfileDao added to AppDatabase
-    private val profileDao = database.profileDao()
+    private val localUserKey = "LOCAL_USER"
 
-    override suspend fun updateLocalProfile(
-        profile: ProfileEntity, 
-        avatarData: ByteArray?, 
-        thumbnailData: ByteArray?
-    ) = withContext(Dispatchers.IO) {
-        // Keep IdentityManager in sync with the new profile name
-        identityManager.updateName(profile.name)
+    override fun getLocalProfile(): Flow<ProfileEntity?> {
+        return profileDao.getProfile(localUserKey).flowOn(Dispatchers.IO)
+    }
+
+    override fun getContactProfile(ownerKey: String): Flow<ProfileEntity?> {
+        return profileDao.getProfile(ownerKey).flowOn(Dispatchers.IO)
+    }
+
+    override suspend fun updateLocalProfile(name: String, bio: String, statusMessage: String, avatarUri: Uri?) {
+        withContext(Dispatchers.IO) {
+        identityManager.updateName(name)
+        val currentProfile = profileDao.getProfileSync(localUserKey)
         
-        // Save to Database
-        profileDao.insertProfile(profile)
-        
-        // Save avatar if provided
-        if (avatarData != null) {
-            cacheManager.saveProfileAvatar(profile.contactKey, avatarData)
+        var newAvatarHash = currentProfile?.avatarHash
+        var newAvatarLocalPath = currentProfile?.avatarLocalPath
+
+        if (avatarUri != null) {
+            val processed = imageProcessor.processAvatar(avatarUri).getOrThrow()
+            newAvatarHash = processed.hash
+            
+            // Preserve original bytes locally for profile viewing. Contacts receive optimized derivatives.
+            val originalFile = profileCacheManager.saveAvatarBytes(
+                localUserKey,
+                "original",
+                processed.originalBytes,
+                processed.originalExtension
+            )
+            profileCacheManager.saveAvatarBytes(localUserKey, "512", processed.size512Bytes)
+            profileCacheManager.saveAvatarBytes(localUserKey, "1024", processed.size1024Bytes)
+            profileCacheManager.saveAvatarBytes(localUserKey, "256", processed.size256Bytes)
+            profileCacheManager.saveAvatarBytes(localUserKey, "thumb", processed.thumbBytes)
+            
+            newAvatarLocalPath = originalFile.absolutePath
         }
-        
-        // Save thumbnail if provided
-        if (thumbnailData != null) {
-            cacheManager.saveThumbnail(profile.contactKey, thumbnailData)
+
+        val localSigningKey = identityManager.loadIdentity()?.let { identity ->
+            com.astramesh.app.crypto.CryptoManager.toHex(identity.signingPublicKey)
+        }.orEmpty()
+        val isFounder = FounderProfile.isFounderSigningKey(localSigningKey)
+        val effectiveBio = if (isFounder && bio.isBlank()) FounderProfile.bio else bio
+        val effectiveStatus = if (isFounder && statusMessage.isBlank()) FounderProfile.statusMessage else statusMessage
+        val profileHash = generateProfileHash(name, effectiveBio, effectiveStatus)
+        val newVersion = (currentProfile?.profileVersion ?: 0) + 1
+
+        val updatedProfile = ProfileEntity(
+            ownerKey = localUserKey,
+            name = name,
+            bio = effectiveBio,
+            statusMessage = effectiveStatus,
+            avatarHash = newAvatarHash,
+            profileHash = profileHash,
+            profileVersion = newVersion,
+            lastUpdatedAt = System.currentTimeMillis(),
+            avatarLocalPath = newAvatarLocalPath,
+            verifiedBadge = isFounder
+        )
+
+        profileDao.insertProfile(updatedProfile)
         }
     }
 
-    override fun getContactProfile(contactKey: String): Flow<ProfileEntity?> {
-        // We assume ProfileDao has a getProfileFlow method returning Flow<ProfileEntity?>
-        return profileDao.getProfileFlow(contactKey).flowOn(Dispatchers.IO)
-    }
-
-    override suspend fun saveReceivedProfile(
-        profile: ProfileEntity, 
-        avatarData: ByteArray?, 
-        thumbnailData: ByteArray?
-    ) = withContext(Dispatchers.IO) {
-        profileDao.insertProfile(profile)
-        
-        if (avatarData != null) {
-            cacheManager.saveProfileAvatar(profile.contactKey, avatarData)
-        }
-        
-        if (thumbnailData != null) {
-            cacheManager.saveThumbnail(profile.contactKey, thumbnailData)
+    override suspend fun saveContactProfile(profileEntity: ProfileEntity) {
+        withContext(Dispatchers.IO) {
+            profileDao.insertProfile(profileEntity)
         }
     }
 
-    override suspend fun getLocalProfile(): ProfileEntity? = withContext(Dispatchers.IO) {
-        val identity = identityManager.loadIdentity() ?: return@withContext null
-        val contactKey = CryptoManager.toHex(identity.signingPublicKey)
-        // We assume ProfileDao has a getProfileSync method returning ProfileEntity?
-        profileDao.getProfileSync(contactKey)
+    private fun generateProfileHash(name: String, bio: String, status: String): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        val data = "$name|$bio|$status".toByteArray()
+        val hashBytes = digest.digest(data)
+        return hashBytes.joinToString("") { "%02x".format(it) }
     }
 }

@@ -6,9 +6,12 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import com.astramesh.app.ui.theme.*
 
 @Composable
@@ -28,9 +31,11 @@ fun BatteryOptimizationPrompt() {
     if (showDialog) {
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            containerColor = DarkSurface,
+            containerColor = Color(0xE6111827),
             titleContentColor = SoftWhite,
             textContentColor = MutedGray,
+            shape = RoundedCornerShape(30.dp),
+            tonalElevation = 0.dp,
             title = { Text("Keep Astra Mesh Active") },
             text = {
                 Text(

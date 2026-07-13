@@ -105,13 +105,16 @@ fun AstraMessageBubbleFoundation(
 private fun LifecycleStateIcon(state: MessageLifecycleState, color: Color) {
     val icon = when (state) {
         MessageLifecycleState.DRAFT, MessageLifecycleState.QUEUED, MessageLifecycleState.ENCRYPTING, 
-        MessageLifecycleState.SENDING, MessageLifecycleState.TRANSPORT_SELECTED, MessageLifecycleState.IN_TRANSIT -> 
+        MessageLifecycleState.SENDING, MessageLifecycleState.TRANSPORT_SELECTED,
+        MessageLifecycleState.RETRYING ->
             Icons.Default.Schedule
-        MessageLifecycleState.DELIVERED, MessageLifecycleState.ARCHIVED -> 
+        MessageLifecycleState.IN_TRANSIT, MessageLifecycleState.ARCHIVED ->
             Icons.Default.Check
+        MessageLifecycleState.DELIVERED ->
+            Icons.Default.DoneAll
         MessageLifecycleState.READ -> 
             Icons.Default.DoneAll
-        MessageLifecycleState.FAILED, MessageLifecycleState.RETRYING, 
+        MessageLifecycleState.FAILED,
         MessageLifecycleState.CANCELLED, MessageLifecycleState.EXPIRED -> 
             Icons.Default.Error
     }

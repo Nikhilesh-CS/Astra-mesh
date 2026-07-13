@@ -1,7 +1,11 @@
 package com.astramesh.app.network
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,11 +49,21 @@ class NearbyConnectionManager(private val context: Context) {
     private var localName: String = "Unknown"
     private val endpointNames = mutableMapOf<String, String>()
 
+    private var isAdvertising = false
+    private var isDiscovering = false
+
     fun setLocalName(name: String) {
         localName = name
     }
 
     fun startAdvertising() {
+        if (isAdvertising) return
+        if (!hasNearbyPermissions()) {
+            _connectionStatus.value = "Nearby permissions needed"
+            return
+        }
+        isAdvertising = true
+
         val advertisingOptions = AdvertisingOptions.Builder()
             .setStrategy(STRATEGY)
             .build()
@@ -64,11 +78,19 @@ class NearbyConnectionManager(private val context: Context) {
             _connectionStatus.value = "Advertising"
         }.addOnFailureListener { e ->
             Log.e(TAG, "Advertising failed", e)
+            isAdvertising = false
             _connectionStatus.value = "Advertising failed"
         }
     }
 
     fun startDiscovery() {
+        if (isDiscovering) return
+        if (!hasNearbyPermissions()) {
+            _connectionStatus.value = "Nearby permissions needed"
+            return
+        }
+        isDiscovering = true
+
         val discoveryOptions = DiscoveryOptions.Builder()
             .setStrategy(STRATEGY)
             .build()
@@ -82,6 +104,7 @@ class NearbyConnectionManager(private val context: Context) {
             _connectionStatus.value = "Discovering"
         }.addOnFailureListener { e ->
             Log.e(TAG, "Discovery failed", e)
+            isDiscovering = false
             _connectionStatus.value = "Discovery failed"
         }
     }
@@ -109,8 +132,12 @@ class NearbyConnectionManager(private val context: Context) {
     }
 
     fun sendRaw(endpointId: String, data: String) {
-        val payload = Payload.fromBytes(data.toByteArray(Charsets.UTF_8))
-        connectionsClient.sendPayload(endpointId, payload)
+        try {
+            val payload = Payload.fromBytes(data.toByteArray(Charsets.UTF_8))
+            connectionsClient.sendPayload(endpointId, payload)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send raw payload to $endpointId", e)
+        }
     }
 
     fun sendMessage(endpointId: String, message: String) {
@@ -121,10 +148,42 @@ class NearbyConnectionManager(private val context: Context) {
         connectionsClient.stopAdvertising()
         connectionsClient.stopDiscovery()
         connectionsClient.stopAllEndpoints()
+        isAdvertising = false
+        isDiscovering = false
         _nearbyDevices.value = emptyList()
         _connectedEndpoints.value = emptySet()
         _connectionStatus.value = "Stopped"
         endpointNames.clear()
+    }
+
+    fun stopDiscovery() {
+        connectionsClient.stopDiscovery()
+        isDiscovering = false
+        _nearbyDevices.value = emptyList()
+        if (isAdvertising || _connectedEndpoints.value.isNotEmpty()) {
+            _connectionStatus.value = "Battery saver discovery paused"
+        } else {
+            _connectionStatus.value = "Discovery stopped"
+        }
+    }
+
+    private fun hasNearbyPermissions(): Boolean {
+        val permissions = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                add(Manifest.permission.BLUETOOTH_SCAN)
+                add(Manifest.permission.BLUETOOTH_ADVERTISE)
+                add(Manifest.permission.BLUETOOTH_CONNECT)
+            } else {
+                add(Manifest.permission.ACCESS_FINE_LOCATION)
+                add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.NEARBY_WIFI_DEVICES)
+            }
+        }
+        return permissions.all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
     }
 
     private val endpointDiscoveryCallback = object : EndpointDiscoveryCallback() {
@@ -142,6 +201,7 @@ class NearbyConnectionManager(private val context: Context) {
         override fun onEndpointLost(endpointId: String) {
             Log.d(TAG, "Lost: $endpointId")
             _nearbyDevices.value = _nearbyDevices.value.filter { it.endpointId != endpointId }
+            endpointNames.remove(endpointId)
         }
     }
 
@@ -179,6 +239,8 @@ class NearbyConnectionManager(private val context: Context) {
         override fun onDisconnected(endpointId: String) {
             Log.d(TAG, "Disconnected from $endpointId")
             _connectedEndpoints.value = _connectedEndpoints.value - endpointId
+            _nearbyDevices.value = _nearbyDevices.value.filter { it.endpointId != endpointId }
+            endpointNames.remove(endpointId)
             onDisconnected?.invoke(endpointId)
         }
     }
