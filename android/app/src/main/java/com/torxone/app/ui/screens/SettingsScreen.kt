@@ -676,7 +676,7 @@ fun SettingsScreen(
             },
             confirmButton = {
                 TextButton(
-                    onClick = { exportLauncher.launch("TorXOne_Backup_${System.currentTimeMillis()}.astramesh-backup") },
+                    onClick = { exportLauncher.launch("TorXOne_Backup_${System.currentTimeMillis()}.torxone-backup") },
                     enabled = backupPassword.length >= 4 && !isBackupWorking
                 ) {
                     Text("Export", color = AccentCyan)
